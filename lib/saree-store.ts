@@ -1,37 +1,48 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { MongoClient } from "mongodb";
 import { randomUUID } from "crypto";
 import { SareeItem, SareeStatus } from "@/types/saree";
 
-const dataPath = path.join(process.cwd(), "data", "sarees.json");
-const photosDirPath = path.join(process.cwd(), "public", "photos");
+// connection helpers --------------------------------------------------------
+let cachedClient: MongoClient | null = null;
+let cachedDb: ReturnType<MongoClient["db"]> | null = null;
 
-async function ensureDataFile() {
-  await fs.mkdir(path.dirname(dataPath), { recursive: true });
-  await fs.mkdir(photosDirPath, { recursive: true });
-
-  try {
-    await fs.access(dataPath);
-  } catch {
-    await fs.writeFile(dataPath, "[]", "utf8");
+async function connect() {
+  if (cachedDb) return cachedDb;
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("MONGODB_URI environment variable is not defined");
   }
+  if (!cachedClient) {
+    cachedClient = new MongoClient(uri);
+    await cachedClient.connect();
+  }
+  // use database specified in URI or 'saree_gallery' as fallback
+  cachedDb = cachedClient.db();
+  return cachedDb;
 }
 
-export async function readSarees(): Promise<SareeItem[]> {
-  await ensureDataFile();
-  const raw = await fs.readFile(dataPath, "utf8");
+function getCollection() {
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  return cachedDb!.collection<SareeItem>("sarees");
+}
 
-  try {
-    const parsed = JSON.parse(raw) as SareeItem[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+// data access --------------------------------------------------------------
+export async function readSarees(): Promise<SareeItem[]> {
+  const db = await connect();
+  const coll = db.collection<SareeItem>("sarees");
+  return coll.find({}).toArray();
 }
 
 export async function writeSarees(sarees: SareeItem[]) {
-  await ensureDataFile();
-  await fs.writeFile(dataPath, JSON.stringify(sarees, null, 2), "utf8");
+  const db = await connect();
+  const coll = db.collection<SareeItem>("sarees");
+  // replace entire collection with provided array
+  await coll.deleteMany({});
+  if (sarees.length) {
+    await coll.insertMany(sarees.map((s) => ({ ...s })));
+  }
 }
 
 export function normalizeStatus(input: string | null | undefined): SareeStatus {
@@ -43,8 +54,10 @@ export function makeId() {
 }
 
 export async function saveUploadedFile(file: File | null): Promise<string | null> {
+  // file uploads still stored in public/photos; change later if using blob storage
   if (!file || file.size === 0) return null;
 
+  const photosDirPath = path.join(process.cwd(), "public", "photos");
   await fs.mkdir(photosDirPath, { recursive: true });
 
   const ext = path.extname(file.name) || ".jpg";

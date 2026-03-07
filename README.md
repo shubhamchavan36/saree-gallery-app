@@ -29,6 +29,19 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Environment & Database
+
+This app stores saree data in MongoDB. Set the `MONGODB_URI` variable before running or deploying. Example `.env.local`:
+
+```env
+MONGODB_URI="mongodb+srv://shubham36chavan_db_user:-KPjyLqhoGOKoOznI@<cluster>.mongodb.net/saree_gallery?retryWrites=true&w=majority"
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin123
+ADMIN_SESSION_VALUE=saree-gallery-admin-auth
+```
+
+Replace `<cluster>` with your Atlas cluster address. The defaults above match the project’s built-in credentials.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

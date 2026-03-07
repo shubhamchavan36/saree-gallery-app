@@ -47,16 +47,39 @@ function resolveDbName(uri: string) {
 // Results are cached to avoid opening multiple connections during hot reload or
 // in serverless environments.
 export async function getDb(): Promise<Db> {
-  if (db) return db;
+  if (db && client && client.readyState === 1) return db;
+
+  // Reset if connection is closed
+  if (client && client.readyState !== 1) {
+    await client.close();
+    client = null;
+    db = null;
+  }
+
   const uri = resolveMongoUri();
 
   if (!client) {
     client = new MongoClient(uri, {
       serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      tls: true,
+      tlsAllowInvalidCertificates: false,
+      maxPoolSize: 10,
+      minPoolSize: 5,
     });
     await client.connect();
   }
 
   db = client.db(resolveDbName(uri));
   return db;
+}
+
+// Close the MongoDB connection (useful for cleanup in serverless environments)
+export async function closeDb(): Promise<void> {
+  if (client) {
+    await client.close();
+    client = null;
+    db = null;
+  }
 }

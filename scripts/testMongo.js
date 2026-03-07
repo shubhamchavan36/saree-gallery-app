@@ -2,6 +2,8 @@
 // simple test script to verify MongoDB connection via getDb helper
 // usage: set MONGODB_URI=... && node scripts/testMongo.js
 
+require('dotenv').config({ path: '../.env.local' });
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'SET' : 'NOT SET');
 const { getDb } = require("../lib/mongodb");
 
 async function run() {

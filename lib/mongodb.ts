@@ -15,10 +15,21 @@ function stripWrappingQuotes(value: string) {
 }
 
 function resolveMongoUri() {
-  const raw =
-    process.env.MONGODB_URI ||
-    "mongodb+srv://shubham36chavan_db_user:KPjyLqhoGOKoOznI@sareesgallery.h6l2ezp.mongodb.net/saree_gallery?appName=sareesgallery";
-  return stripWrappingQuotes(raw);
+  const raw = process.env.MONGODB_URI;
+  if (!raw || !raw.trim()) {
+    throw new Error(
+      "Missing MONGODB_URI environment variable. Set it in .env.local (local) or project environment settings (deployment)."
+    );
+  }
+
+  const uri = stripWrappingQuotes(raw);
+  if (!/^mongodb(\+srv)?:\/\//i.test(uri)) {
+    throw new Error(
+      "Invalid MONGODB_URI format. It must start with mongodb:// or mongodb+srv://"
+    );
+  }
+
+  return uri;
 }
 
 function resolveDbName(uri: string) {

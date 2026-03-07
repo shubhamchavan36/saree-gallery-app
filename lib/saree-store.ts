@@ -10,7 +10,17 @@ import { getDb } from "@/lib/mongodb";
 export async function readSarees(): Promise<SareeItem[]> {
   const db = await getDb();
   const coll = db.collection<SareeItem>("sarees");
-  return coll.find({}).toArray();
+  const docs = await coll.find({}).toArray();
+  // Convert MongoDB documents to plain objects
+  return docs.map(doc => ({
+    id: doc.id,
+    name: doc.name,
+    imageText: doc.imageText,
+    price: doc.price,
+    status: doc.status,
+    tileImage: doc.tileImage,
+    colors: doc.colors,
+  }));
 }
 
 export async function writeSarees(sarees: SareeItem[]) {
@@ -42,7 +52,7 @@ export async function saveUploadedFile(file: File | null): Promise<string | null
 
   try {
     // Upload to Vercel Blob instead of local filesystem
-    const blob = await put(filename, file, { access: 'private' });
+    const blob = await put(filename, file, { access: 'public' });
     return blob.url;
   } catch (error) {
     console.error('Blob upload error:', error);

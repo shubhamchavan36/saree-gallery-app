@@ -9,12 +9,23 @@ import {
 } from "@/lib/saree-store";
 import { SareeItem } from "@/types/saree";
 
-export async function GET() {
-  const unauthorized = await ensureAdminSession();
-  if (unauthorized) return unauthorized;
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-  const sarees = await readSarees();
-  return NextResponse.json(sarees);
+export async function GET() {
+  try {
+    const unauthorized = await ensureAdminSession();
+    if (unauthorized) return unauthorized;
+
+    const sarees = await readSarees();
+    return NextResponse.json(sarees);
+  } catch (error) {
+    console.error("Error reading sarees:", error);
+    return NextResponse.json(
+      { message: "Failed to read sarees. Verify MongoDB env configuration." },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: Request) {

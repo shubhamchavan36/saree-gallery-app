@@ -4,6 +4,8 @@ import Carousel from "@/components/Carousel";
 import GallerySection from "@/components/GallerySection";
 import { readSarees } from "@/lib/saree-store";
 
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
   const sarees = await readSarees();
 

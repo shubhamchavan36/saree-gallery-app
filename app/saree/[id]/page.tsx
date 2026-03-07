@@ -13,6 +13,8 @@ import Header from "@/components/Header";
 import ImageViewer from "@/components/ImageViewer";
 import { readSarees } from "@/lib/saree-store";
 
+export const dynamic = 'force-dynamic';
+
 type Props = {
   params: { id: string } | Promise<{ id: string }>;
 };

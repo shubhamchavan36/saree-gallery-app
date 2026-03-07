@@ -1,7 +1,14 @@
 import { MongoClient, Db } from "mongodb";
 
-let client: MongoClient | null = null;
-let db: Db | null = null;
+type MongoCache = {
+  clientPromise?: Promise<MongoClient>;
+  uri?: string;
+};
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __mongoCache: MongoCache | undefined;
+}
 
 function stripWrappingQuotes(value: string) {
   const trimmed = value.trim();
@@ -43,43 +50,46 @@ function resolveDbName(uri: string) {
   return "saree_gallery";
 }
 
+function getMongoCache(): MongoCache {
+  if (!globalThis.__mongoCache) {
+    globalThis.__mongoCache = {};
+  }
+  return globalThis.__mongoCache;
+}
+
 // Creates/connects to a MongoDB database using the MONGODB_URI env variable.
 // Results are cached to avoid opening multiple connections during hot reload or
 // in serverless environments.
 export async function getDb(): Promise<Db> {
-  if (db && client && client.readyState === 1) return db;
-
-  // Reset if connection is closed
-  if (client && client.readyState !== 1) {
-    await client.close();
-    client = null;
-    db = null;
-  }
-
   const uri = resolveMongoUri();
+  const cache = getMongoCache();
 
-  if (!client) {
-    client = new MongoClient(uri, {
-      serverSelectionTimeoutMS: 5000,
+  if (!cache.clientPromise || cache.uri !== uri) {
+    const client = new MongoClient(uri, {
+      serverSelectionTimeoutMS: 10000,
       connectTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-      tls: true,
-      tlsAllowInvalidCertificates: false,
       maxPoolSize: 10,
-      minPoolSize: 5,
+      minPoolSize: 0,
     });
-    await client.connect();
+
+    cache.uri = uri;
+    cache.clientPromise = client.connect().catch((error) => {
+      cache.clientPromise = undefined;
+      throw error;
+    });
   }
 
-  db = client.db(resolveDbName(uri));
-  return db;
+  const client = await cache.clientPromise;
+  return client.db(resolveDbName(uri));
 }
 
 // Close the MongoDB connection (useful for cleanup in serverless environments)
 export async function closeDb(): Promise<void> {
-  if (client) {
+  const cache = getMongoCache();
+  if (cache.clientPromise) {
+    const client = await cache.clientPromise;
     await client.close();
-    client = null;
-    db = null;
   }
+  cache.clientPromise = undefined;
+  cache.uri = undefined;
 }

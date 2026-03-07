@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // simple test script to verify MongoDB connection via getDb helper
 // usage: set MONGODB_URI=... && node scripts/testMongo.js
 

@@ -1,9 +1,8 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Test script for Vercel Blob upload
 // Run with: node scripts/testBlob.js
 
 const { put } = require('@vercel/blob');
-const fs = require('fs');
-const path = require('path');
 
 async function testBlob() {
   console.log("Testing Vercel Blob upload with public access...");

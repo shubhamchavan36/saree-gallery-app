@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // quick test using mongodb driver directly
 // run with MONGODB_URI env variable
 const { MongoClient } = require('mongodb');

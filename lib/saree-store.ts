@@ -1,4 +1,3 @@
-import { promises as fs } from "fs";
 import path from "path";
 import { put } from "@vercel/blob";
 import { randomUUID } from "crypto";
@@ -7,12 +6,30 @@ import { SareeItem, SareeStatus } from "@/types/saree";
 // data access --------------------------------------------------------------
 import { getDb } from "@/lib/mongodb";
 
+function normalizeBlobUrl(url: string): string {
+  return url.replace(".private.blob.vercel-storage.com", ".public.blob.vercel-storage.com");
+}
+
+function normalizeSareeUrls(item: SareeItem): SareeItem {
+  return {
+    ...item,
+    tileImage: normalizeBlobUrl(item.tileImage),
+    colors: Array.isArray(item.colors)
+      ? item.colors.map((entry) => ({
+          ...entry,
+          images: Array.isArray(entry.images) ? entry.images.map((img) => normalizeBlobUrl(img)) : [],
+        }))
+      : [],
+  };
+}
+
 export async function readSarees(): Promise<SareeItem[]> {
   const db = await getDb();
   const coll = db.collection<SareeItem>("sarees");
   const docs = await coll.find({}).toArray();
   // Convert MongoDB documents to plain objects
-  return docs.map(doc => ({
+  return docs.map((doc) =>
+    normalizeSareeUrls({
     id: doc.id,
     name: doc.name,
     imageText: doc.imageText,
@@ -20,7 +37,8 @@ export async function readSarees(): Promise<SareeItem[]> {
     status: doc.status,
     tileImage: doc.tileImage,
     colors: doc.colors,
-  }));
+    })
+  );
 }
 
 export async function writeSarees(sarees: SareeItem[]) {
@@ -28,7 +46,7 @@ export async function writeSarees(sarees: SareeItem[]) {
   const coll = db.collection<SareeItem>("sarees");
   await coll.deleteMany({});
   if (sarees.length) {
-    await coll.insertMany(sarees.map((s) => ({ ...s })));
+    await coll.insertMany(sarees.map((s) => normalizeSareeUrls(s)));
   }
 }
 
@@ -52,10 +70,10 @@ export async function saveUploadedFile(file: File | null): Promise<string | null
 
   try {
     // Upload to Vercel Blob instead of local filesystem
-    const blob = await put(filename, file, { access: 'public' });
-    return blob.url;
+    const blob = await put(filename, file, { access: "public" });
+    return normalizeBlobUrl(blob.url);
   } catch (error) {
-    console.error('Blob upload error:', error);
+    console.error("Blob upload error:", error);
     throw error; // Re-throw to let API handle it
   }
 }

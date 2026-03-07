@@ -14,7 +14,9 @@ export async function getDb(): Promise<Db> {
     "mongodb+srv://shubham36chavan_db_user:KPjyLqhoGOKoOznI@sareesgallery.h6l2ezp.mongodb.net/saree_gallery?appName=sareesgallery";
 
   if (!client) {
-    client = new MongoClient(uri);
+    client = new MongoClient(uri, {
+      serverSelectionTimeoutMS: 5000,
+    });
     await client.connect();
   }
 

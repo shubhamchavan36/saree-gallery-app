@@ -31,14 +31,25 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ## Environment & Database
 
-This app stores saree data in MongoDB. Set the `MONGODB_URI` variable before running or deploying. Example `.env.local`:
+This app stores saree data in MongoDB and images in Vercel Blob. Set these variables before running or deploying:
 
 ```env
-MONGODB_URI="mongodb+srv://shubham36chavan_db_user:-KPjyLqhoGOKoOznI@<cluster>.mongodb.net/saree_gallery?retryWrites=true&w=majority"
+# MongoDB connection
+MONGODB_URI="mongodb+srv://shubham36chavan_db_user:KPjyLqhoGOKoOznI@sareesgallery.h6l2ezp.mongodb.net/saree_gallery?appName=sareesgallery"
+
+# Vercel Blob for image storage (get from Vercel dashboard)
+BLOB_READ_WRITE_TOKEN=your_blob_token_here
+
+# Admin credentials
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
 ADMIN_SESSION_VALUE=saree-gallery-admin-auth
 ```
+
+For Vercel deployment:
+1. Go to your Vercel project dashboard
+2. Navigate to Settings > Environment Variables
+3. Add the above variables (BLOB_READ_WRITE_TOKEN is auto-generated when you enable Blob)
 
 Replace `<cluster>` with your Atlas cluster address. The defaults above match the project’s built-in credentials.
 

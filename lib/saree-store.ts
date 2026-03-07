@@ -1,5 +1,5 @@
 import path from "path";
-import { put } from "@vercel/blob";
+import { del, put } from "@vercel/blob";
 import { randomUUID } from "crypto";
 import { SareeItem, SareeStatus } from "@/types/saree";
 
@@ -76,4 +76,28 @@ export async function saveUploadedFile(file: File | null): Promise<string | null
     console.error("Blob upload error:", error);
     throw error; // Re-throw to let API handle it
   }
+}
+
+export function getSareeBlobUrls(item: SareeItem): string[] {
+  const urls = new Set<string>();
+  if (item.tileImage) {
+    urls.add(item.tileImage);
+  }
+
+  if (Array.isArray(item.colors)) {
+    item.colors.forEach((entry) => {
+      entry.images.forEach((imageUrl) => {
+        if (imageUrl) {
+          urls.add(imageUrl);
+        }
+      });
+    });
+  }
+
+  return Array.from(urls);
+}
+
+export async function deleteBlobUrls(urls: string[]): Promise<void> {
+  if (urls.length === 0) return;
+  await del(urls);
 }

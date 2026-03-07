@@ -61,6 +61,10 @@ export default function AdminPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [editing, setEditing] = useState<SareeItem | null>(null);
   const [editForm, setEditForm] = useState<FormState>(initialForm);
+  const formGalleryFileNames = form.galleryImages ? Array.from(form.galleryImages).map((file) => file.name) : [];
+  const editGalleryFileNames = editForm.galleryImages
+    ? Array.from(editForm.galleryImages).map((file) => file.name)
+    : [];
 
   useEffect(() => {
     const load = async () => {
@@ -135,7 +139,12 @@ export default function AdminPage() {
   const deleteSaree = async (id: string) => {
     const proceed = window.confirm("Delete this saree?");
     if (!proceed) return;
-    await fetch(`/api/sarees/${id}`, { method: "DELETE" });
+    const response = await fetch(`/api/sarees/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      setNotice(data.message ?? "Failed to delete saree.");
+      return;
+    }
     setNotice("Saree deleted successfully.");
     await refresh();
   };
@@ -247,6 +256,7 @@ export default function AdminPage() {
                 <input
                   hidden
                   type="file"
+                  multiple={false}
                   accept="image/*"
                   onChange={(event) =>
                     setForm((prev) => ({
@@ -256,6 +266,9 @@ export default function AdminPage() {
                   }
                 />
               </Button>
+              <Typography variant="caption" sx={{ mt: 0.75, display: "block", color: "text.secondary" }}>
+                {form.tileImage ? form.tileImage.name : "No tile image selected"}
+              </Typography>
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
               <Button
@@ -283,6 +296,11 @@ export default function AdminPage() {
                   }
                 />
               </Button>
+              <Typography variant="caption" sx={{ mt: 0.75, display: "block", color: "text.secondary" }}>
+                {formGalleryFileNames.length > 0
+                  ? formGalleryFileNames.join(", ")
+                  : "No gallery images selected"}
+              </Typography>
             </Grid>
           </Grid>
           <Button type="submit" variant="contained" sx={{ mt: 2 }}>
@@ -495,6 +513,7 @@ export default function AdminPage() {
               <input
                 hidden
                 type="file"
+                multiple={false}
                 accept="image/*"
                 onChange={(event) =>
                   setEditForm((prev) => ({
@@ -504,6 +523,9 @@ export default function AdminPage() {
                 }
               />
             </Button>
+            <Typography variant="caption" sx={{ mt: -1, display: "block", color: "text.secondary" }}>
+              {editForm.tileImage ? editForm.tileImage.name : "No tile image selected"}
+            </Typography>
             <Button
               variant="outlined"
               component="label"
@@ -520,6 +542,11 @@ export default function AdminPage() {
                 }
               />
             </Button>
+            <Typography variant="caption" sx={{ mt: -1, display: "block", color: "text.secondary" }}>
+              {editGalleryFileNames.length > 0
+                ? editGalleryFileNames.join(", ")
+                : "No gallery images selected"}
+            </Typography>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>

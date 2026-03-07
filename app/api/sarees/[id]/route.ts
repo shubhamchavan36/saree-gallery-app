@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { ensureAdminSession } from "@/lib/admin-auth";
 import {
+  deleteBlobUrls,
+  getSareeBlobUrls,
   normalizeStatus,
   readSarees,
   saveUploadedFile,
@@ -128,10 +130,22 @@ export async function DELETE(_: Request, context: Context) {
 
     const { id } = await context.params;
     const sarees = await readSarees();
+    const current = sarees.find((item) => item.id === id);
     const next = sarees.filter((item) => item.id !== id);
 
-    if (next.length === sarees.length) {
+    if (!current || next.length === sarees.length) {
       return NextResponse.json({ message: "Saree not found." }, { status: 404 });
+    }
+
+    const blobUrls = getSareeBlobUrls(current);
+    try {
+      await deleteBlobUrls(blobUrls);
+    } catch (blobError) {
+      console.error("Error deleting blob files:", blobError);
+      return NextResponse.json(
+        { message: "Failed to delete saree images from Blob storage." },
+        { status: 500 }
+      );
     }
 
     await writeSarees(next);

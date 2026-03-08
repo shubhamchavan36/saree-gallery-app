@@ -69,6 +69,29 @@ const initialForm: FormState = {
   galleryImages: null,
 };
 
+function getFileNameFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    return pathname.split("/").pop() || url;
+  } catch {
+    return url;
+  }
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [sarees, setSarees] = useState<SareeItem[]>([]);
@@ -79,6 +102,8 @@ export default function AdminPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [editing, setEditing] = useState<SareeItem | null>(null);
   const [editForm, setEditForm] = useState<FormState>(initialForm);
+  const [editExistingTileImage, setEditExistingTileImage] = useState<string | null>(null);
+  const [editExistingGalleryImages, setEditExistingGalleryImages] = useState<string[]>([]);
   const formGalleryFileNames = form.galleryImages ? Array.from(form.galleryImages).map((file) => file.name) : [];
   const editGalleryFileNames = editForm.galleryImages
     ? Array.from(editForm.galleryImages).map((file) => file.name)
@@ -244,8 +269,7 @@ export default function AdminPage() {
       }
 
       setNotice("Saree updated successfully.");
-      setEditing(null);
-      setEditForm(initialForm);
+      closeEdit();
       await refresh();
     } catch {
       setNotice("Failed to upload one or more images.");
@@ -272,6 +296,28 @@ export default function AdminPage() {
     await fetch("/api/admin/logout", { method: "POST" });
     router.replace("/login");
     router.refresh();
+  };
+
+  const openEdit = (item: SareeItem) => {
+    setEditing(item);
+    setEditForm({
+      name: item.name,
+      imageText: item.imageText ?? item.name,
+      price: item.price.toString(),
+      status: item.status,
+      color: item.colors[0]?.color ?? "default",
+      tileImage: null,
+      galleryImages: null,
+    });
+    setEditExistingTileImage(item.tileImage ?? null);
+    setEditExistingGalleryImages(item.colors.flatMap((entry) => entry.images));
+  };
+
+  const closeEdit = () => {
+    setEditing(null);
+    setEditForm(initialForm);
+    setEditExistingTileImage(null);
+    setEditExistingGalleryImages([]);
   };
 
   return (
@@ -441,7 +487,9 @@ export default function AdminPage() {
               <TableRow>
                 <TableCell>Image</TableCell>
                 <TableCell>Name</TableCell>
+                <TableCell>Date & Time</TableCell>
                 <TableCell>Price</TableCell>
+                <TableCell>Gallery Images</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
@@ -449,17 +497,21 @@ export default function AdminPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5}>Loading...</TableCell>
+                  <TableCell colSpan={7}>Loading...</TableCell>
                 </TableRow>
               ) : sarees.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5}>No sarees yet.</TableCell>
+                  <TableCell colSpan={7}>No sarees yet.</TableCell>
                 </TableRow>
               ) : (
                 sarees.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>
-                      <Box sx={{ position: "relative", width: 70, height: 70, borderRadius: 2, overflow: "hidden" }}>
+                      <Box
+                        sx={{ position: "relative", width: 70, height: 70, borderRadius: 2, overflow: "hidden", cursor: "pointer" }}
+                        onClick={() => router.push(`/saree/${item.id}`)}
+                        title="Open details"
+                      >
                         <Image src={item.tileImage} alt={item.name} fill style={{ objectFit: "cover" }} />
                       </Box>
                     </TableCell>
@@ -468,7 +520,11 @@ export default function AdminPage() {
                         {item.name}
                       </Typography>
                     </TableCell>
+                    <TableCell>{formatDateTime(item.updatedAt ?? item.createdAt)}</TableCell>
                     <TableCell>Rs. {item.price.toLocaleString("en-IN")}</TableCell>
+                    <TableCell>
+                      {item.colors.reduce((total, entry) => total + entry.images.length, 0)}
+                    </TableCell>
                     <TableCell>
                       <Chip
                         size="small"
@@ -482,18 +538,7 @@ export default function AdminPage() {
                           size="small"
                           variant="outlined"
                           startIcon={<EditRoundedIcon />}
-                          onClick={() => {
-                            setEditing(item);
-                            setEditForm({
-                              name: item.name,
-                              imageText: item.imageText ?? item.name,
-                              price: item.price.toString(),
-                              status: item.status,
-                              color: "default",
-                              tileImage: null,
-                              galleryImages: null,
-                            });
-                          }}
+                          onClick={() => openEdit(item)}
                         >
                           Edit
                         </Button>
@@ -525,7 +570,11 @@ export default function AdminPage() {
               <Card key={item.id} sx={{ borderRadius: 3, border: "1px solid rgba(0,0,0,0.08)" }}>
                 <CardContent sx={{ p: 1.5 }}>
                   <Stack direction="row" spacing={1.5}>
-                    <Box sx={{ position: "relative", width: 76, height: 76, borderRadius: 2, overflow: "hidden", flexShrink: 0 }}>
+                    <Box
+                      sx={{ position: "relative", width: 76, height: 76, borderRadius: 2, overflow: "hidden", flexShrink: 0, cursor: "pointer" }}
+                      onClick={() => router.push(`/saree/${item.id}`)}
+                      title="Open details"
+                    >
                       <Image src={item.tileImage} alt={item.name} fill style={{ objectFit: "cover" }} />
                     </Box>
                     <Stack spacing={0.75} sx={{ minWidth: 0, flex: 1 }}>
@@ -547,18 +596,7 @@ export default function AdminPage() {
                       fullWidth
                       variant="outlined"
                       startIcon={<EditRoundedIcon />}
-                      onClick={() => {
-                        setEditing(item);
-                        setEditForm({
-                          name: item.name,
-                          imageText: item.imageText ?? item.name,
-                          price: item.price.toString(),
-                          status: item.status,
-                          color: "default",
-                          tileImage: null,
-                          galleryImages: null,
-                        });
-                      }}
+                      onClick={() => openEdit(item)}
                     >
                       Edit
                     </Button>
@@ -580,7 +618,7 @@ export default function AdminPage() {
         </Stack>
       </Container>
 
-      <Dialog open={Boolean(editing)} onClose={() => setEditing(null)} fullWidth maxWidth="sm">
+      <Dialog open={Boolean(editing)} onClose={closeEdit} fullWidth maxWidth="sm">
         <DialogTitle>Edit Saree</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2}>
@@ -643,7 +681,11 @@ export default function AdminPage() {
               />
             </Button>
             <Typography variant="caption" sx={{ mt: -1, display: "block", color: "text.secondary" }}>
-              {editForm.tileImage ? editForm.tileImage.name : "No tile image selected"}
+              {editForm.tileImage
+                ? editForm.tileImage.name
+                : editExistingTileImage
+                  ? `Current: ${getFileNameFromUrl(editExistingTileImage)}`
+                  : "No tile image selected"}
             </Typography>
             <Button
               variant="outlined"
@@ -664,12 +706,14 @@ export default function AdminPage() {
             <Typography variant="caption" sx={{ mt: -1, display: "block", color: "text.secondary" }}>
               {editGalleryFileNames.length > 0
                 ? editGalleryFileNames.join(", ")
-                : "No gallery images selected"}
+                : editExistingGalleryImages.length > 0
+                  ? `Current: ${editExistingGalleryImages.map((url) => getFileNameFromUrl(url)).join(", ")}`
+                  : "No gallery images selected"}
             </Typography>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setEditing(null)} disabled={submitting}>Cancel</Button>
+          <Button onClick={closeEdit} disabled={submitting}>Cancel</Button>
           <Button onClick={() => void submitEdit()} variant="contained" disabled={submitting}>
             {submitting ? "Saving..." : "Save"}
           </Button>

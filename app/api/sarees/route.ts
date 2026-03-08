@@ -73,8 +73,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const now = new Date().toISOString();
     const newSaree: SareeItem = {
       id: makeId(),
+      createdAt: now,
+      updatedAt: now,
       name,
       imageText: imageText || name,
       price,

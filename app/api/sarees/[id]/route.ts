@@ -119,6 +119,7 @@ export async function PUT(request: Request, context: Context) {
         nextItem.colors.push({ color, images: allGalleryImages });
       }
     }
+    nextItem.updatedAt = new Date().toISOString();
 
     sarees[index] = nextItem;
     await writeSarees(sarees);

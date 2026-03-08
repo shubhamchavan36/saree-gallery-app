@@ -31,6 +31,8 @@ export async function readSarees(): Promise<SareeItem[]> {
   return docs.map((doc) =>
     normalizeSareeUrls({
     id: doc.id,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
     name: doc.name,
     imageText: doc.imageText,
     price: doc.price,

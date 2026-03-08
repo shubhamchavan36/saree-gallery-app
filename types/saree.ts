@@ -7,6 +7,8 @@ export interface SareeColor {
 
 export interface SareeItem {
   id: string;
+  createdAt?: string;
+  updatedAt?: string;
   name: string;
   imageText?: string;
   price: number;

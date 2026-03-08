@@ -29,9 +29,8 @@ export default function SareeTile({ saree }: { saree: SareeItem }) {
           sx={{
             position: "relative",
             width: "100%",
-            aspectRatio: "3 / 4",
+            aspectRatio: { xs: "1 / 1", sm: "4 / 5" },
             bgcolor: "#f6efe8",
-            p: 1,
           }}
         >
           <Image
@@ -39,7 +38,7 @@ export default function SareeTile({ saree }: { saree: SareeItem }) {
             alt={saree.name}
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            style={{ objectFit: "contain", padding: "8px" }}
+            style={{ objectFit: "contain" }}
           />
           <Stack
             sx={{

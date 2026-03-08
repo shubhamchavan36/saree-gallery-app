@@ -232,7 +232,6 @@ export default function ImageViewer({
             position: "absolute",
             top: { xs: 10, sm: 14 },
             left: { xs: 10, sm: 14 },
-            zIndex: 3,
             bgcolor: "rgba(0,0,0,0.5)",
             borderRadius: 999,
             px: 0.4,

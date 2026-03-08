@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { upload } from "@vercel/blob/client";
@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogTitle,
   Grid,
+  InputAdornment,
   LinearProgress,
   MenuItem,
   Paper,
@@ -28,12 +29,14 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Typography,
 } from "@mui/material";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import Header from "@/components/Header";
 import { SareeItem, SareeStatus } from "@/types/saree";
 
@@ -104,10 +107,31 @@ export default function AdminPage() {
   const [editForm, setEditForm] = useState<FormState>(initialForm);
   const [editExistingTileImage, setEditExistingTileImage] = useState<string | null>(null);
   const [editExistingGalleryImages, setEditExistingGalleryImages] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [tablePage, setTablePage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   const formGalleryFileNames = form.galleryImages ? Array.from(form.galleryImages).map((file) => file.name) : [];
   const editGalleryFileNames = editForm.galleryImages
     ? Array.from(editForm.galleryImages).map((file) => file.name)
     : [];
+  const filteredSarees = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return sarees;
+    return sarees.filter((item) => {
+      const galleryCount = item.colors.reduce((total, entry) => total + entry.images.length, 0);
+      return (
+        item.name.toLowerCase().includes(query) ||
+        (item.imageText ?? "").toLowerCase().includes(query) ||
+        item.status.toLowerCase().includes(query) ||
+        String(item.price).includes(query) ||
+        String(galleryCount).includes(query)
+      );
+    });
+  }, [sarees, searchQuery]);
+  const pagedSarees = useMemo(() => {
+    const start = tablePage * rowsPerPage;
+    return filteredSarees.slice(start, start + rowsPerPage);
+  }, [filteredSarees, tablePage, rowsPerPage]);
 
   useEffect(() => {
     const load = async () => {
@@ -320,6 +344,11 @@ export default function AdminPage() {
     setEditExistingGalleryImages([]);
   };
 
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setTablePage(0);
+  };
+
   return (
     <Box className="app-shell-bg" sx={{ minHeight: "100vh", pb: 5 }}>
       <Header />
@@ -472,6 +501,20 @@ export default function AdminPage() {
             {submitting ? "Saving..." : "Add Saree"}
           </Button>
         </Paper>
+        <TextField
+          fullWidth
+          value={searchQuery}
+          onChange={(event) => handleSearchChange(event.target.value)}
+          placeholder="Search by name, image text, status, price, count..."
+          sx={{ mt: 2.2 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchRoundedIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
 
         <TableContainer
           component={Paper}
@@ -499,12 +542,12 @@ export default function AdminPage() {
                 <TableRow>
                   <TableCell colSpan={7}>Loading...</TableCell>
                 </TableRow>
-              ) : sarees.length === 0 ? (
+              ) : filteredSarees.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7}>No sarees yet.</TableCell>
+                  <TableCell colSpan={7}>No matching sarees found.</TableCell>
                 </TableRow>
               ) : (
-                sarees.map((item) => (
+                pagedSarees.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>
                       <Box
@@ -558,15 +601,29 @@ export default function AdminPage() {
               )}
             </TableBody>
           </Table>
+          {!loading && filteredSarees.length > 0 && (
+            <TablePagination
+              component="div"
+              count={filteredSarees.length}
+              page={tablePage}
+              onPageChange={(_, newPage) => setTablePage(newPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(event) => {
+                setRowsPerPage(Number(event.target.value));
+                setTablePage(0);
+              }}
+              rowsPerPageOptions={[5, 10, 20, 50]}
+            />
+          )}
         </TableContainer>
 
         <Stack spacing={1.5} sx={{ mt: 3, display: { xs: "flex", md: "none" } }}>
           {loading ? (
             <Paper sx={{ p: 2 }}>Loading...</Paper>
-          ) : sarees.length === 0 ? (
-            <Paper sx={{ p: 2 }}>No sarees yet.</Paper>
+          ) : filteredSarees.length === 0 ? (
+            <Paper sx={{ p: 2 }}>No matching sarees found.</Paper>
           ) : (
-            sarees.map((item) => (
+            filteredSarees.map((item) => (
               <Card key={item.id} sx={{ borderRadius: 3, border: "1px solid rgba(0,0,0,0.08)" }}>
                 <CardContent sx={{ p: 1.5 }}>
                   <Stack direction="row" spacing={1.5}>

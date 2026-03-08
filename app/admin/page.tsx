@@ -3,19 +3,23 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { upload } from "@vercel/blob/client";
 import {
   Alert,
+  Backdrop,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
   Container,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Grid,
+  LinearProgress,
   MenuItem,
   Paper,
   Stack,
@@ -43,6 +47,18 @@ type FormState = {
   galleryImages: FileList | null;
 };
 
+type UploadedImageUrls = {
+  tileImageUrl: string | null;
+  galleryImageUrls: string[];
+};
+
+type UploadProgressState = {
+  totalFiles: number;
+  completedFiles: number;
+  percentage: number;
+  activeFileName: string | null;
+};
+
 const initialForm: FormState = {
   name: "",
   imageText: "",
@@ -58,6 +74,8 @@ export default function AdminPage() {
   const [sarees, setSarees] = useState<SareeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
   const [editing, setEditing] = useState<SareeItem | null>(null);
   const [editForm, setEditForm] = useState<FormState>(initialForm);
@@ -86,54 +104,155 @@ export default function AdminPage() {
     setSarees(data);
   };
 
-  const buildFormData = (state: FormState) => {
+  const buildFormData = (state: FormState, uploadedUrls: UploadedImageUrls) => {
     const payload = new FormData();
     payload.append("name", state.name);
     payload.append("imageText", state.imageText);
     payload.append("price", state.price);
     payload.append("status", state.status);
     payload.append("color", state.color);
-    if (state.tileImage) payload.append("tileImage", state.tileImage);
-    if (state.galleryImages) {
-      Array.from(state.galleryImages).forEach((file) => payload.append("galleryImages", file));
-    }
+    if (uploadedUrls.tileImageUrl) payload.append("tileImageUrl", uploadedUrls.tileImageUrl);
+    uploadedUrls.galleryImageUrls.forEach((url) => payload.append("galleryImageUrls", url));
     return payload;
+  };
+
+  const uploadToBlob = async (
+    file: File,
+    onProgress?: (loaded: number) => void
+  ) => {
+    const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+    const blob = await upload(filename, file, {
+      access: "public",
+      handleUploadUrl: "/api/blob/upload",
+      multipart: file.size > 5 * 1024 * 1024,
+      onUploadProgress: (event) => onProgress?.(event.loaded),
+    });
+    return blob.url;
+  };
+
+  const uploadSelectedImages = async (state: FormState): Promise<UploadedImageUrls> => {
+    const galleryFiles = state.galleryImages ? Array.from(state.galleryImages) : [];
+    const uploads = [
+      ...(state.tileImage ? [{ kind: "tile" as const, file: state.tileImage }] : []),
+      ...galleryFiles.map((file) => ({ kind: "gallery" as const, file })),
+    ];
+
+    if (uploads.length === 0) {
+      setUploadProgress(null);
+      return { tileImageUrl: null, galleryImageUrls: [] };
+    }
+
+    const totalBytes = uploads.reduce((sum, entry) => sum + entry.file.size, 0);
+    const loadedBytesByIndex = uploads.map(() => 0);
+    const galleryImageUrls: string[] = [];
+    let tileImageUrl: string | null = null;
+
+    setUploadProgress({
+      totalFiles: uploads.length,
+      completedFiles: 0,
+      percentage: 0,
+      activeFileName: uploads[0].file.name,
+    });
+
+    for (let index = 0; index < uploads.length; index += 1) {
+      const entry = uploads[index];
+
+      const url = await uploadToBlob(entry.file, (loaded) => {
+        loadedBytesByIndex[index] = loaded;
+        const totalLoaded = loadedBytesByIndex.reduce((sum, value) => sum + value, 0);
+        const percentage = totalBytes > 0 ? Math.round((totalLoaded / totalBytes) * 100) : 0;
+        setUploadProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                percentage,
+                activeFileName: entry.file.name,
+              }
+            : prev
+        );
+      });
+
+      loadedBytesByIndex[index] = entry.file.size;
+      setUploadProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              completedFiles: index + 1,
+              percentage:
+                totalBytes > 0
+                  ? Math.round(
+                      (loadedBytesByIndex.reduce((sum, value) => sum + value, 0) / totalBytes) * 100
+                    )
+                  : 100,
+              activeFileName: index + 1 < uploads.length ? uploads[index + 1].file.name : null,
+            }
+          : prev
+      );
+
+      if (entry.kind === "tile") {
+        tileImageUrl = url;
+      } else {
+        galleryImageUrls.push(url);
+      }
+    }
+
+    return { tileImageUrl, galleryImageUrls };
   };
 
   const submitNew = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const response = await fetch("/api/sarees", {
-      method: "POST",
-      body: buildFormData(form),
-    });
-    const data = await response.json();
+    setSubmitting(true);
+    try {
+      setNotice("Uploading images...");
+      const uploadedUrls = await uploadSelectedImages(form);
+      const response = await fetch("/api/sarees", {
+        method: "POST",
+        body: buildFormData(form, uploadedUrls),
+      });
+      const data = await response.json();
 
-    if (!response.ok) {
-      setNotice(data.message ?? "Failed to create saree.");
-      return;
+      if (!response.ok) {
+        setNotice(data.message ?? "Failed to create saree.");
+        return;
+      }
+
+      setNotice("Saree added successfully.");
+      setForm(initialForm);
+      await refresh();
+    } catch {
+      setNotice("Failed to upload one or more images.");
+    } finally {
+      setUploadProgress(null);
+      setSubmitting(false);
     }
-
-    setNotice("Saree added successfully.");
-    setForm(initialForm);
-    await refresh();
   };
 
   const submitEdit = async () => {
     if (!editing) return;
-    const response = await fetch(`/api/sarees/${editing.id}`, {
-      method: "PUT",
-      body: buildFormData(editForm),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setNotice(data.message ?? "Failed to update saree.");
-      return;
-    }
+    setSubmitting(true);
+    try {
+      setNotice("Uploading images...");
+      const uploadedUrls = await uploadSelectedImages(editForm);
+      const response = await fetch(`/api/sarees/${editing.id}`, {
+        method: "PUT",
+        body: buildFormData(editForm, uploadedUrls),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setNotice(data.message ?? "Failed to update saree.");
+        return;
+      }
 
-    setNotice("Saree updated successfully.");
-    setEditing(null);
-    setEditForm(initialForm);
-    await refresh();
+      setNotice("Saree updated successfully.");
+      setEditing(null);
+      setEditForm(initialForm);
+      await refresh();
+    } catch {
+      setNotice("Failed to upload one or more images.");
+    } finally {
+      setUploadProgress(null);
+      setSubmitting(false);
+    }
   };
 
   const deleteSaree = async (id: string) => {
@@ -303,8 +422,8 @@ export default function AdminPage() {
               </Typography>
             </Grid>
           </Grid>
-          <Button type="submit" variant="contained" sx={{ mt: 2 }}>
-            Add Saree
+          <Button type="submit" variant="contained" sx={{ mt: 2 }} disabled={submitting}>
+            {submitting ? "Saving..." : "Add Saree"}
           </Button>
         </Paper>
 
@@ -550,12 +669,55 @@ export default function AdminPage() {
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setEditing(null)}>Cancel</Button>
-          <Button onClick={() => void submitEdit()} variant="contained">
-            Save
+          <Button onClick={() => setEditing(null)} disabled={submitting}>Cancel</Button>
+          <Button onClick={() => void submitEdit()} variant="contained" disabled={submitting}>
+            {submitting ? "Saving..." : "Save"}
           </Button>
         </DialogActions>
       </Dialog>
+      <Backdrop
+        open={submitting}
+        sx={{
+          zIndex: (theme) => theme.zIndex.modal + 10,
+          color: "#fff",
+          flexDirection: "column",
+          gap: 1,
+          backgroundColor: "rgba(0,0,0,0.45)",
+        }}
+      >
+        <Stack
+          spacing={1.25}
+          sx={{
+            width: { xs: "84%", sm: 360 },
+            maxWidth: "92vw",
+            bgcolor: "background.paper",
+            color: "text.primary",
+            borderRadius: 2,
+            px: 2,
+            py: 1.75,
+            border: "1px solid rgba(0,0,0,0.08)",
+            boxShadow: "0 12px 28px rgba(0,0,0,0.2)",
+          }}
+        >
+          <Stack direction="row" spacing={1.25} alignItems="center">
+            <CircularProgress size={20} />
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Uploading files, please wait...
+            </Typography>
+          </Stack>
+          <LinearProgress
+            variant="determinate"
+            value={uploadProgress?.percentage ?? 0}
+            sx={{ height: 8, borderRadius: 999 }}
+          />
+          <Typography variant="caption" sx={{ color: "text.secondary" }}>
+            {uploadProgress
+              ? `${uploadProgress.completedFiles}/${uploadProgress.totalFiles} files uploaded (${uploadProgress.percentage}%)`
+              : "Preparing upload..."}
+            {uploadProgress?.activeFileName ? ` - ${uploadProgress.activeFileName}` : ""}
+          </Typography>
+        </Stack>
+      </Backdrop>
     </Box>
   );
 }

@@ -3,6 +3,7 @@ import { ensureAdminSession } from "@/lib/admin-auth";
 import {
   deleteBlobUrls,
   getSareeBlobUrls,
+  normalizeBlobUrl,
   normalizeStatus,
   readSarees,
   saveUploadedFile,
@@ -60,16 +61,24 @@ export async function PUT(request: Request, context: Context) {
     const priceInput = formData.get("price");
     const statusInput = formData.get("status");
     const color = ((formData.get("color") as string | null) ?? "default").trim() || "default";
+    const tileImageUrl = (formData.get("tileImageUrl") as string | null)?.trim();
+    const galleryImageUrls = formData
+      .getAll("galleryImageUrls")
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((url) => url.trim())
+      .filter(Boolean)
+      .map((url) => normalizeBlobUrl(url));
 
     const tileImageFile = formData.get("tileImage") as File | null;
     const galleryImages = formData
       .getAll("galleryImages")
       .filter((entry): entry is File => entry instanceof File);
 
-    const uploadedTileImage = await saveUploadedFile(tileImageFile);
+    const uploadedTileImage = tileImageUrl ? normalizeBlobUrl(tileImageUrl) : await saveUploadedFile(tileImageFile);
     const uploadedGalleryImages = (
       await Promise.all(galleryImages.map((file) => saveUploadedFile(file)))
     ).filter((value): value is string => Boolean(value));
+    const allGalleryImages = [...galleryImageUrls, ...uploadedGalleryImages];
 
     const nextItem = { ...current };
 
@@ -96,7 +105,7 @@ export async function PUT(request: Request, context: Context) {
       nextItem.tileImage = uploadedTileImage;
     }
 
-    if (uploadedGalleryImages.length > 0) {
+    if (allGalleryImages.length > 0) {
       const colorIndex = nextItem.colors.findIndex(
         (entry) => entry.color.toLowerCase() === color.toLowerCase()
       );
@@ -104,10 +113,10 @@ export async function PUT(request: Request, context: Context) {
       if (colorIndex >= 0) {
         nextItem.colors[colorIndex].images = [
           ...nextItem.colors[colorIndex].images,
-          ...uploadedGalleryImages,
+          ...allGalleryImages,
         ];
       } else {
-        nextItem.colors.push({ color, images: uploadedGalleryImages });
+        nextItem.colors.push({ color, images: allGalleryImages });
       }
     }
 

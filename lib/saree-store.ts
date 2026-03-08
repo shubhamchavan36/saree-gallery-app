@@ -6,7 +6,7 @@ import { SareeItem, SareeStatus } from "@/types/saree";
 // data access --------------------------------------------------------------
 import { getDb } from "@/lib/mongodb";
 
-function normalizeBlobUrl(url: string): string {
+export function normalizeBlobUrl(url: string): string {
   return url.replace(".private.blob.vercel-storage.com", ".public.blob.vercel-storage.com");
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ensureAdminSession } from "@/lib/admin-auth";
 import {
   makeId,
+  normalizeBlobUrl,
   normalizeStatus,
   readSarees,
   saveUploadedFile,
@@ -39,6 +40,13 @@ export async function POST(request: Request) {
     const price = Number(formData.get("price"));
     const status = normalizeStatus(formData.get("status") as string | null);
     const color = ((formData.get("color") as string | null) ?? "default").trim() || "default";
+    const tileImageUrl = (formData.get("tileImageUrl") as string | null)?.trim();
+    const galleryImageUrls = formData
+      .getAll("galleryImageUrls")
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((url) => url.trim())
+      .filter(Boolean)
+      .map((url) => normalizeBlobUrl(url));
     const tileImageFile = formData.get("tileImage") as File | null;
     const galleryImages = formData
       .getAll("galleryImages")
@@ -51,12 +59,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const uploadedTileImage = await saveUploadedFile(tileImageFile);
+    const uploadedTileImage = tileImageUrl ? normalizeBlobUrl(tileImageUrl) : await saveUploadedFile(tileImageFile);
     const uploadedGalleryImages = (
       await Promise.all(galleryImages.map((file) => saveUploadedFile(file)))
     ).filter((value): value is string => Boolean(value));
+    const allGalleryImages = [...galleryImageUrls, ...uploadedGalleryImages];
 
-    const tileImage = uploadedTileImage ?? uploadedGalleryImages[0];
+    const tileImage = uploadedTileImage ?? allGalleryImages[0];
     if (!tileImage) {
       return NextResponse.json(
         { message: "Provide at least one tile or gallery image." },
@@ -74,7 +83,7 @@ export async function POST(request: Request) {
       colors: [
         {
           color,
-          images: uploadedGalleryImages.length > 0 ? uploadedGalleryImages : [tileImage],
+          images: allGalleryImages.length > 0 ? allGalleryImages : [tileImage],
         },
       ],
     };

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { Box, IconButton, Stack, Tooltip } from "@mui/material";
+import { Box, CircularProgress, IconButton, Stack, Tooltip } from "@mui/material";
 import ArrowBackIosNewRoundedIcon from "@mui/icons-material/ArrowBackIosNewRounded";
 import ArrowForwardIosRoundedIcon from "@mui/icons-material/ArrowForwardIosRounded";
 import { SareeColor } from "@/types/saree";
@@ -29,10 +29,15 @@ export default function ImageViewer({
 }) {
   const [activeColorIndex, setActiveColorIndex] = useState(0);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [imageLoading, setImageLoading] = useState(true);
 
   const activeColor = colors[activeColorIndex] ?? colors[0];
   const images = activeColor?.images ?? [];
   const activeImage = images[activeImageIndex] ?? images[0];
+
+  useEffect(() => {
+    setImageLoading(Boolean(activeImage));
+  }, [activeImage]);
 
   const swatches = useMemo(
     () =>
@@ -72,7 +77,24 @@ export default function ImageViewer({
             sizes="(max-width: 900px) 100vw, 60vw"
             style={{ objectFit: "cover" }}
             priority
+            onLoad={() => setImageLoading(false)}
           />
+        )}
+        {imageLoading && (
+          <Box
+            sx={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(255,255,255,0.45)",
+              backdropFilter: "blur(2px)",
+              zIndex: 2,
+            }}
+          >
+            <CircularProgress size={32} />
+          </Box>
         )}
         {imageText && (
           <Box
@@ -94,6 +116,25 @@ export default function ImageViewer({
             }}
           >
             {imageText}
+          </Box>
+        )}
+        {images.length > 0 && (
+          <Box
+            sx={{
+              position: "absolute",
+              top: { xs: 10, sm: 14 },
+              right: { xs: 10, sm: 14 },
+              px: 1.1,
+              py: 0.45,
+              borderRadius: 999,
+              color: "#fff",
+              fontWeight: 600,
+              fontSize: { xs: "0.75rem", sm: "0.82rem" },
+              backgroundColor: "rgba(0,0,0,0.58)",
+              backdropFilter: "blur(2px)",
+            }}
+          >
+            {activeImageIndex + 1} / {images.length}
           </Box>
         )}
 

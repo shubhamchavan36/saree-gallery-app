@@ -10,6 +10,7 @@ import {
 } from "@mui/material";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import Header from "@/components/Header";
+import DetailActions from "@/components/DetailActions";
 import ImageViewer from "@/components/ImageViewer";
 import { readSarees } from "@/lib/saree-store";
 
@@ -43,6 +44,7 @@ export default async function SareeDetailPage({ params }: Props) {
       : [];
   const normalizedColors =
     safeColors.length > 0 ? safeColors : [{ color: "default", images: [saree.tileImage] }];
+  const detailImageUrls = Array.from(new Set(normalizedColors.flatMap((entry) => entry.images)));
 
   return (
     <Box className="app-shell-bg" sx={{ minHeight: "100vh", pb: 6 }}>
@@ -87,6 +89,7 @@ export default async function SareeDetailPage({ params }: Props) {
               color={safeStatus === "available" ? "success" : "error"}
               sx={{ mt: 2, fontWeight: 600 }}
             />
+            <DetailActions itemName={safeName} imageUrls={detailImageUrls} />
 
             <Divider sx={{ my: 3 }} />
 

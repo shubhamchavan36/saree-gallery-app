@@ -32,6 +32,19 @@ function detectExt(url: string, mimeType: string): string {
   return "jpg";
 }
 
+function resolveOriginalImageUrl(url: string): string {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const wrappedSource = parsed.searchParams.get("url");
+    if (wrappedSource) {
+      return decodeURIComponent(wrappedSource);
+    }
+  } catch {
+    // ignore URL parsing errors and use original URL
+  }
+  return url;
+}
+
 export default function DetailActions({ itemName, imageUrls }: DetailActionsProps) {
   const [busy, setBusy] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
@@ -47,8 +60,8 @@ export default function DetailActions({ itemName, imageUrls }: DetailActionsProp
     try {
       const base = makeSafeFileBase(itemName);
       for (let index = 0; index < uniqueUrls.length; index += 1) {
-        const url = uniqueUrls[index];
-        const response = await fetch(url);
+        const url = resolveOriginalImageUrl(uniqueUrls[index]);
+        const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) {
           throw new Error(`Image download failed (${response.status})`);
         }

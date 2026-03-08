@@ -65,8 +65,10 @@ export default function ImageViewer({
           position: "relative",
           borderRadius: 4,
           overflow: "hidden",
-          height: { xs: 280, sm: 360, md: 520 },
-          bgcolor: "grey.100",
+          height: { xs: "68vh", sm: "74vh", md: "82vh" },
+          minHeight: { xs: 420, sm: 520, md: 640 },
+          maxHeight: 980,
+          bgcolor: "#f6efe8",
         }}
       >
         {activeImage && (
@@ -75,8 +77,9 @@ export default function ImageViewer({
             alt="Saree view"
             fill
             sizes="(max-width: 900px) 100vw, 60vw"
-            style={{ objectFit: "cover" }}
+            style={{ objectFit: "contain" }}
             priority
+            unoptimized
             onLoad={() => setImageLoading(false)}
           />
         )}

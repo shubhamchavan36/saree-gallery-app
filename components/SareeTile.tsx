@@ -25,13 +25,21 @@ export default function SareeTile({ saree }: { saree: SareeItem }) {
       }}
     >
       <CardActionArea component={Link} href={`/saree/${saree.id}`}>
-        <Stack sx={{ position: "relative", height: 260 }}>
+        <Stack
+          sx={{
+            position: "relative",
+            width: "100%",
+            aspectRatio: "3 / 4",
+            bgcolor: "#f6efe8",
+            p: 1,
+          }}
+        >
           <Image
             src={saree.tileImage}
             alt={saree.name}
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            style={{ objectFit: "cover" }}
+            style={{ objectFit: "contain", padding: "8px" }}
           />
           <Stack
             sx={{
@@ -66,25 +74,25 @@ export default function SareeTile({ saree }: { saree: SareeItem }) {
             />
           )}
         </Stack>
-        <CardContent>
+        <CardContent sx={{ px: 1.5, py: 1.25, "&:last-child": { pb: 1.25 } }}>
           <Typography
-            variant="h6"
+            variant="subtitle1"
             sx={{
               overflowWrap: "anywhere",
               display: "-webkit-box",
               WebkitLineClamp: 2,
               WebkitBoxOrient: "vertical",
               overflow: "hidden",
-              lineHeight: 1.25,
-              minHeight: "2.5em",
+              lineHeight: 1.2,
+              minHeight: "2.35em",
             }}
           >
             {saree.name}
           </Typography>
-          <Typography variant="body1" sx={{ mt: 0.5, color: "primary.main", fontWeight: 600 }}>
+          <Typography variant="body2" sx={{ mt: 0.35, color: "primary.main", fontWeight: 600 }}>
             Rs. {saree.price.toLocaleString("en-IN")}
           </Typography>
-          <Typography variant="body2" sx={{ mt: 1, color: "text.secondary" }}>
+          <Typography variant="caption" sx={{ mt: 0.5, color: "text.secondary", display: "block" }}>
             {saree.status === "available" ? "Available" : "Currently unavailable"}
           </Typography>
         </CardContent>

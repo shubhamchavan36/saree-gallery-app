@@ -110,6 +110,16 @@ export default async function SareeDetailPage({ params }: Props) {
                 />
               ))}
             </Stack>
+
+            {saree.description && (
+              <>
+                <Divider sx={{ my: 3 }} />
+                <Typography variant="h6">Description</Typography>
+                <Typography variant="body1" sx={{ mt: 1.5, whiteSpace: "pre-wrap" }}>
+                  {saree.description}
+                </Typography>
+              </>
+            )}
           </Box>
         </Stack>
       </Container>

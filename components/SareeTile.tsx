@@ -29,7 +29,7 @@ export default function SareeTile({ saree }: { saree: SareeItem }) {
           sx={{
             position: "relative",
             width: "100%",
-            aspectRatio: { xs: "1 / 1", sm: "4 / 5" },
+            aspectRatio: { xs: "1 / 1", sm: "5 / 5" },
             bgcolor: "#f6efe8",
           }}
         >
@@ -65,29 +65,28 @@ export default function SareeTile({ saree }: { saree: SareeItem }) {
               {saree.imageText || saree.name}
             </Typography>
           </Stack>
-          {saree.status === "sold_out" && (
-            <Chip
-              label="Sold Out"
-              color="error"
-              sx={{ position: "absolute", right: 12, top: 12, fontWeight: 700 }}
-            />
-          )}
         </Stack>
         <CardContent sx={{ px: 1.5, py: 1.25, "&:last-child": { pb: 1.25 } }}>
-          <Typography
-            variant="subtitle1"
-            sx={{
-              overflowWrap: "anywhere",
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-              lineHeight: 1.2,
-              minHeight: "2.35em",
-            }}
-          >
-            {saree.name}
-          </Typography>
+          <Stack direction="row" spacing={0.8} alignItems="flex-start" justifyContent="space-between">
+            <Typography
+              variant="subtitle1"
+              sx={{
+                overflowWrap: "anywhere",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                lineHeight: 1.2,
+                minHeight: "2.35em",
+                flex: 1,
+              }}
+            >
+              {saree.name}
+            </Typography>
+            {saree.status === "sold_out" && (
+              <Chip label="Sold Out" color="error" size="small" sx={{ fontWeight: 700, mt: 0.1 }} />
+            )}
+          </Stack>
           <Typography variant="body2" sx={{ mt: 0.35, color: "primary.main", fontWeight: 600 }}>
             Rs. {saree.price.toLocaleString("en-IN")}
           </Typography>

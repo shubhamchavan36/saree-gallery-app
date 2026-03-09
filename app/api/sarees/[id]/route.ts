@@ -60,6 +60,7 @@ export async function PUT(request: Request, context: Context) {
     const imageTextInput = formData.get("imageText");
     const priceInput = formData.get("price");
     const statusInput = formData.get("status");
+    const descriptionInput = formData.get("description");
     const color = ((formData.get("color") as string | null) ?? "default").trim() || "default";
     const tileImageUrl = (formData.get("tileImageUrl") as string | null)?.trim();
     const galleryImageUrls = formData
@@ -68,6 +69,16 @@ export async function PUT(request: Request, context: Context) {
       .map((url) => url.trim())
       .filter(Boolean)
       .map((url) => normalizeBlobUrl(url));
+    const removedGalleryImageUrls = Array.from(
+      new Set(
+        formData
+          .getAll("removedGalleryImageUrls")
+          .filter((entry): entry is string => typeof entry === "string")
+          .map((url) => url.trim())
+          .filter(Boolean)
+          .map((url) => normalizeBlobUrl(url))
+      )
+    );
 
     const tileImageFile = formData.get("tileImage") as File | null;
     const galleryImages = formData
@@ -101,8 +112,22 @@ export async function PUT(request: Request, context: Context) {
       nextItem.status = normalizeStatus(statusInput);
     }
 
+    if (typeof descriptionInput === "string") {
+      nextItem.description = descriptionInput.trim();
+    }
+
     if (uploadedTileImage) {
       nextItem.tileImage = uploadedTileImage;
+    }
+
+    if (removedGalleryImageUrls.length > 0) {
+      const removedSet = new Set(removedGalleryImageUrls);
+      nextItem.colors = nextItem.colors
+        .map((entry) => ({
+          ...entry,
+          images: entry.images.filter((imageUrl) => !removedSet.has(normalizeBlobUrl(imageUrl))),
+        }))
+        .filter((entry) => entry.images.length > 0);
     }
 
     if (allGalleryImages.length > 0) {
@@ -119,6 +144,34 @@ export async function PUT(request: Request, context: Context) {
         nextItem.colors.push({ color, images: allGalleryImages });
       }
     }
+
+    if (removedGalleryImageUrls.length > 0) {
+      if (removedGalleryImageUrls.includes(normalizeBlobUrl(current.tileImage))) {
+        const firstGalleryImage = nextItem.colors.flatMap((entry) => entry.images)[0];
+        if (!uploadedTileImage && !firstGalleryImage) {
+          return NextResponse.json(
+            { message: "Cannot remove the only image. Add another image or set a new tile image." },
+            { status: 400 }
+          );
+        }
+        if (!uploadedTileImage && firstGalleryImage) {
+          nextItem.tileImage = firstGalleryImage;
+        }
+      }
+
+      const blobReferences = new Set<string>();
+      sarees.forEach((item, sareeIndex) => {
+        if (sareeIndex === index) return;
+        getSareeBlobUrls(item).forEach((url) => blobReferences.add(normalizeBlobUrl(url)));
+      });
+      getSareeBlobUrls(nextItem).forEach((url) => blobReferences.add(normalizeBlobUrl(url)));
+
+      const blobUrlsToDelete = removedGalleryImageUrls.filter((url) => !blobReferences.has(url));
+      if (blobUrlsToDelete.length > 0) {
+        await deleteBlobUrls(blobUrlsToDelete);
+      }
+    }
+
     nextItem.updatedAt = new Date().toISOString();
 
     sarees[index] = nextItem;

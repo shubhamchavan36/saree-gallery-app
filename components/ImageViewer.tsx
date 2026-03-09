@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 import { Box, CircularProgress, IconButton, Stack, Tooltip } from "@mui/material";
 import ArrowBackIosNewRoundedIcon from "@mui/icons-material/ArrowBackIosNewRounded";
@@ -9,19 +9,6 @@ import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
 import ZoomOutRoundedIcon from "@mui/icons-material/ZoomOutRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
 import { SareeColor } from "@/types/saree";
-
-const colorMap: Record<string, string> = {
-  red: "#b71c1c",
-  maroon: "#6a1b2d",
-  blue: "#0d47a1",
-  green: "#1b5e20",
-  yellow: "#f9a825",
-  pink: "#d81b60",
-  black: "#212121",
-  white: "#f5f5f5",
-  gold: "#d4af37",
-  default: "#8d6e63",
-};
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 5;
 const ZOOM_STEP = 0.5;
@@ -45,14 +32,13 @@ export default function ImageViewer({
   const activeColor = colors[activeColorIndex] ?? colors[0];
   const images = activeColor?.images ?? [];
   const activeImage = images[activeImageIndex] ?? images[0];
-
-  const swatches = useMemo(
-    () =>
-      colors.map((entry) => {
-        const key = entry.color.toLowerCase();
-        return colorMap[key] ?? entry.color;
-      }),
-    [colors]
+  const thumbnailItems = colors.flatMap((entry, colorIndex) =>
+    entry.images.map((imageUrl, imageIndex) => ({
+      imageUrl,
+      color: entry.color,
+      colorIndex,
+      imageIndex,
+    }))
   );
 
   const previous = () => {
@@ -302,43 +288,58 @@ export default function ImageViewer({
         </IconButton>
       </Box>
 
-      <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap" }}>
-        {colors.map((entry, index) => (
-          <Tooltip title={entry.color} key={`${entry.color}-${index}`}>
-            <Box
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                setImageLoading(true);
-                setZoom(1);
-                setPan({ x: 0, y: 0 });
-                setActiveColorIndex(index);
-                setActiveImageIndex(0);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
+      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+        {thumbnailItems.map((thumb, index) => {
+          const selected =
+            thumb.colorIndex === activeColorIndex && thumb.imageIndex === activeImageIndex;
+
+          return (
+            <Tooltip title={`${thumb.color} ${thumb.imageIndex + 1}`} key={`${thumb.imageUrl}-${index}`}>
+              <Box
+                role="button"
+                tabIndex={0}
+                onClick={() => {
                   setImageLoading(true);
                   setZoom(1);
                   setPan({ x: 0, y: 0 });
-                  setActiveColorIndex(index);
-                  setActiveImageIndex(0);
-                }
-              }}
-              sx={{
-                width: 34,
-                height: 34,
-                borderRadius: "50%",
-                bgcolor: swatches[index],
-                border: "2px solid #fff",
-                boxShadow:
-                  activeColorIndex === index
-                    ? "0 0 0 3px rgba(139, 30, 63, 0.8)"
+                  setActiveColorIndex(thumb.colorIndex);
+                  setActiveImageIndex(thumb.imageIndex);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    setImageLoading(true);
+                    setZoom(1);
+                    setPan({ x: 0, y: 0 });
+                    setActiveColorIndex(thumb.colorIndex);
+                    setActiveImageIndex(thumb.imageIndex);
+                  }
+                }}
+                sx={{
+                  position: "relative",
+                  width: { xs: 54, sm: 62 },
+                  height: { xs: 54, sm: 62 },
+                  borderRadius: 1.5,
+                  overflow: "hidden",
+                  border: "2px solid #fff",
+                  boxShadow: selected
+                    ? "0 0 0 3px rgba(139, 30, 63, 0.85)"
                     : "0 0 0 1px rgba(0,0,0,0.2)",
-                cursor: "pointer",
-              }}
-            />
-          </Tooltip>
-        ))}
+                  cursor: "pointer",
+                  bgcolor: "grey.100",
+                }}
+              >
+                <Image
+                  src={thumb.imageUrl}
+                  alt={`Thumbnail ${thumb.imageIndex + 1}`}
+                  fill
+                  sizes="64px"
+                  style={{ objectFit: "cover" }}
+                  unoptimized
+                />
+              </Box>
+            </Tooltip>
+          );
+        })}
       </Stack>
     </Stack>
   );

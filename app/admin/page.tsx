@@ -48,6 +48,7 @@ type FormState = {
   color: string;
   tileImage: File | null;
   galleryImages: FileList | null;
+  description: string;
 };
 
 type UploadedImageUrls = {
@@ -70,6 +71,7 @@ const initialForm: FormState = {
   color: "default",
   tileImage: null,
   galleryImages: null,
+  description: "",
 };
 
 function getFileNameFromUrl(url: string): string {
@@ -107,6 +109,7 @@ export default function AdminPage() {
   const [editForm, setEditForm] = useState<FormState>(initialForm);
   const [editExistingTileImage, setEditExistingTileImage] = useState<string | null>(null);
   const [editExistingGalleryImages, setEditExistingGalleryImages] = useState<string[]>([]);
+  const [editRemovedGalleryImages, setEditRemovedGalleryImages] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [tablePage, setTablePage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -153,15 +156,21 @@ export default function AdminPage() {
     setSarees(data);
   };
 
-  const buildFormData = (state: FormState, uploadedUrls: UploadedImageUrls) => {
+  const buildFormData = (
+    state: FormState,
+    uploadedUrls: UploadedImageUrls,
+    removedGalleryImageUrls: string[] = []
+  ) => {
     const payload = new FormData();
     payload.append("name", state.name);
     payload.append("imageText", state.imageText);
     payload.append("price", state.price);
     payload.append("status", state.status);
     payload.append("color", state.color);
+    payload.append("description", state.description);
     if (uploadedUrls.tileImageUrl) payload.append("tileImageUrl", uploadedUrls.tileImageUrl);
     uploadedUrls.galleryImageUrls.forEach((url) => payload.append("galleryImageUrls", url));
+    removedGalleryImageUrls.forEach((url) => payload.append("removedGalleryImageUrls", url));
     return payload;
   };
 
@@ -284,7 +293,7 @@ export default function AdminPage() {
       const uploadedUrls = await uploadSelectedImages(editForm);
       const response = await fetch(`/api/sarees/${editing.id}`, {
         method: "PUT",
-        body: buildFormData(editForm, uploadedUrls),
+        body: buildFormData(editForm, uploadedUrls, editRemovedGalleryImages),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -332,9 +341,11 @@ export default function AdminPage() {
       color: item.colors[0]?.color ?? "default",
       tileImage: null,
       galleryImages: null,
+      description: item.description ?? "",
     });
     setEditExistingTileImage(item.tileImage ?? null);
     setEditExistingGalleryImages(item.colors.flatMap((entry) => entry.images));
+    setEditRemovedGalleryImages([]);
   };
 
   const closeEdit = () => {
@@ -342,6 +353,14 @@ export default function AdminPage() {
     setEditForm(initialForm);
     setEditExistingTileImage(null);
     setEditExistingGalleryImages([]);
+    setEditRemovedGalleryImages([]);
+  };
+
+  const removeExistingGalleryImage = (imageUrl: string) => {
+    setEditExistingGalleryImages((prev) => prev.filter((url) => url !== imageUrl));
+    setEditRemovedGalleryImages((prev) =>
+      prev.includes(imageUrl) ? prev : [...prev, imageUrl]
+    );
   };
 
   const handleSearchChange = (value: string) => {
@@ -429,6 +448,16 @@ export default function AdminPage() {
                 label="Color Group"
                 value={form.color}
                 onChange={(event) => setForm((prev) => ({ ...prev, color: event.target.value }))}
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Description"
+                value={form.description}
+                onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
               />
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
@@ -718,6 +747,14 @@ export default function AdminPage() {
               value={editForm.color}
               onChange={(event) => setEditForm((prev) => ({ ...prev, color: event.target.value }))}
             />
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              label="Description"
+              value={editForm.description}
+              onChange={(event) => setEditForm((prev) => ({ ...prev, description: event.target.value }))}
+            />
             <Button
               variant="outlined"
               component="label"
@@ -763,10 +800,24 @@ export default function AdminPage() {
             <Typography variant="caption" sx={{ mt: -1, display: "block", color: "text.secondary" }}>
               {editGalleryFileNames.length > 0
                 ? editGalleryFileNames.join(", ")
-                : editExistingGalleryImages.length > 0
-                  ? `Current: ${editExistingGalleryImages.map((url) => getFileNameFromUrl(url)).join(", ")}`
-                  : "No gallery images selected"}
+                : "No additional gallery images selected"}
             </Typography>
+            {editExistingGalleryImages.length > 0 ? (
+              <Stack direction="row" spacing={1} sx={{ mt: -1, flexWrap: "wrap", rowGap: 1 }}>
+                {editExistingGalleryImages.map((url) => (
+                  <Chip
+                    key={url}
+                    label={getFileNameFromUrl(url)}
+                    onDelete={() => removeExistingGalleryImage(url)}
+                    size="small"
+                  />
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="caption" sx={{ mt: -1, display: "block", color: "text.secondary" }}>
+                No existing gallery images.
+              </Typography>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>

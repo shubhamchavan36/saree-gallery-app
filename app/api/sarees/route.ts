@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     const price = Number(formData.get("price"));
     const status = normalizeStatus(formData.get("status") as string | null);
     const color = ((formData.get("color") as string | null) ?? "default").trim() || "default";
+    const description = (formData.get("description") as string | null)?.trim() ?? "";
     const tileImageUrl = (formData.get("tileImageUrl") as string | null)?.trim();
     const galleryImageUrls = formData
       .getAll("galleryImageUrls")
@@ -89,6 +90,7 @@ export async function POST(request: Request) {
           images: allGalleryImages.length > 0 ? allGalleryImages : [tileImage],
         },
       ],
+      description,
     };
 
     const sarees = await readSarees();

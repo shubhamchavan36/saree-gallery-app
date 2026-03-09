@@ -15,4 +15,5 @@ export interface SareeItem {
   status: SareeStatus;
   tileImage: string;
   colors: SareeColor[];
+  description?: string;
 }

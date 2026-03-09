@@ -39,6 +39,7 @@ export async function readSarees(): Promise<SareeItem[]> {
     status: doc.status,
     tileImage: doc.tileImage,
     colors: doc.colors,
+    description: doc.description,
     })
   );
 }

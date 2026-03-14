@@ -1,24 +1,35 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Box, Chip, CircularProgress, IconButton, Stack, Tooltip } from "@mui/material";
+import { Box, CircularProgress, IconButton, Stack, Tooltip } from "@mui/material";
 import ArrowBackIosNewRoundedIcon from "@mui/icons-material/ArrowBackIosNewRounded";
 import ArrowForwardIosRoundedIcon from "@mui/icons-material/ArrowForwardIosRounded";
 import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
 import ZoomOutRoundedIcon from "@mui/icons-material/ZoomOutRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
-import { SareeColor } from "@/types/saree";
+import { SareeColor, SareeStatus } from "@/types/saree";
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 5;
 const ZOOM_STEP = 0.5;
 
+export type ImageViewerActiveImageMeta = {
+  url: string;
+  status: SareeStatus;
+  color: string;
+  index: number;
+  total: number;
+  label: string;
+};
+
 export default function ImageViewer({
   colors,
   imageText,
+  onActiveImageChange,
 }: {
   colors: SareeColor[];
   imageText?: string;
+  onActiveImageChange?: (meta: ImageViewerActiveImageMeta | null) => void;
 }) {
   const [activeColorIndex, setActiveColorIndex] = useState(0);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -42,6 +53,29 @@ export default function ImageViewer({
       imageIndex,
     }))
   );
+
+  useEffect(() => {
+    if (!onActiveImageChange) return;
+    if (!activeImageUrl) {
+      onActiveImageChange(null);
+      return;
+    }
+
+    const color = (activeColor?.color ?? "default").trim() || "default";
+    const total = images.length;
+    const index = Math.min(Math.max(activeImageIndex, 0), Math.max(total - 1, 0));
+    const status = activeImage?.status ?? "available";
+    const label = `${color} ${index + 1}`;
+
+    onActiveImageChange({
+      url: activeImageUrl,
+      status,
+      color,
+      index,
+      total,
+      label,
+    });
+  }, [onActiveImageChange, activeImageUrl, activeImage?.status, activeColor?.color, activeImageIndex, images.length]);
 
   const previous = () => {
     if (images.length <= 1) return;
@@ -154,22 +188,6 @@ export default function ImageViewer({
               onLoad={() => setImageLoading(false)}
             />
           </Box>
-        )}
-        {activeImage?.status === "sold_out" && (
-          <Chip
-            label="Sold Out"
-            color="error"
-            size="small"
-            sx={{
-              position: "absolute",
-              top: { xs: 10, sm: 14 },
-              left: { xs: 10, sm: 14 },
-              zIndex: 5,
-              fontWeight: 800,
-              letterSpacing: 0.2,
-              boxShadow: "0 10px 18px rgba(0,0,0,0.18)",
-            }}
-          />
         )}
         {imageLoading && (
           <Box

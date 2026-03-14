@@ -1,17 +1,7 @@
 import { notFound } from "next/navigation";
-import {
-  Box,
-  Button,
-  Chip,
-  Container,
-  Divider,
-  Stack,
-  Typography,
-} from "@mui/material";
-import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import { Box } from "@mui/material";
 import Header from "@/components/Header";
-import DetailActions from "@/components/DetailActions";
-import ImageViewer from "@/components/ImageViewer";
+import SareeDetailClient from "@/components/SareeDetailClient";
 import { readSarees } from "@/lib/saree-store";
 
 export const dynamic = 'force-dynamic';
@@ -53,80 +43,15 @@ export default async function SareeDetailPage({ params }: Props) {
   return (
     <Box className="app-shell-bg" sx={{ minHeight: "100vh", pb: 6 }}>
       <Header />
-      <Container maxWidth="lg" sx={{ mt: { xs: 2.5, md: 4 } }}>
-        <Button
-          component="a"
-          href="/"
-          startIcon={<ArrowBackRoundedIcon />}
-          sx={{ mb: 2 }}
-        >
-          Back to Gallery
-        </Button>
-
-        <Stack direction={{ xs: "column", md: "row" }} spacing={{ xs: 2.5, md: 4 }}>
-          <Box sx={{ flex: 1.6 }}>
-            <ImageViewer colors={normalizedColors} imageText={safeImageText} />
-          </Box>
-
-          <Box
-            sx={{
-              flex: 1,
-              p: { xs: 2, sm: 3 },
-              borderRadius: 3,
-              bgcolor: "background.paper",
-              border: "1px solid rgba(139, 30, 63, 0.1)",
-              boxShadow: "0 16px 34px rgba(74, 35, 46, 0.08)",
-            }}
-          >
-            <Typography
-              variant="h4"
-              sx={{ fontSize: { xs: "1.55rem", sm: "2rem" }, overflowWrap: "anywhere", lineHeight: 1.15 }}
-            >
-              {safeName}
-            </Typography>
-            <Typography variant="h5" color="primary" sx={{ mt: 1.5, fontSize: { xs: "1.35rem", sm: "1.6rem" } }}>
-              Rs. {safePrice.toLocaleString("en-IN")}
-            </Typography>
-
-            <Chip
-              label={safeStatus === "available" ? "Available" : "Sold Out"}
-              color={safeStatus === "available" ? "success" : "error"}
-              sx={{ mt: 2, fontWeight: 600 }}
-            />
-            <DetailActions itemName={safeName} imageUrls={detailImageUrls} />
-
-            <Divider sx={{ my: 3 }} />
-
-            <Typography variant="h6">Color Variants</Typography>
-            <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: "wrap" }}>
-              {normalizedColors.map((entry) => (
-                <Chip
-                  key={entry.color}
-                  label={`${entry.color} (${entry.images.length})`}
-                  sx={{
-                    maxWidth: "100%",
-                    "& .MuiChip-label": {
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    },
-                  }}
-                />
-              ))}
-            </Stack>
-
-            {saree.description && (
-              <>
-                <Divider sx={{ my: 3 }} />
-                <Typography variant="h6">Description</Typography>
-                <Typography variant="body1" sx={{ mt: 1.5, whiteSpace: "pre-wrap" }}>
-                  {saree.description}
-                </Typography>
-              </>
-            )}
-          </Box>
-        </Stack>
-      </Container>
+      <SareeDetailClient
+        name={safeName}
+        subtitle={safeImageText}
+        price={safePrice}
+        baseStatus={safeStatus}
+        colors={normalizedColors}
+        imageUrls={detailImageUrls}
+        description={saree.description}
+      />
     </Box>
   );
 }

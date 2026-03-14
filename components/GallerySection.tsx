@@ -122,7 +122,7 @@ export default function GallerySection({ items }: { items: SareeItem[] }) {
       />
 
       <Grid container spacing={1.5} sx={{ mb: { xs: 2.5, md: 3.5 } }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
           <TextField
             select
             fullWidth
@@ -137,29 +137,7 @@ export default function GallerySection({ items }: { items: SareeItem[] }) {
           </TextField>
         </Grid>
 
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <TextField
-            fullWidth
-            label="Min price"
-            value={minPrice}
-            onChange={(event) => setMinPrice(event.target.value)}
-            inputMode="numeric"
-            sx={{ "& .MuiOutlinedInput-root": { bgcolor: "#fff" } }}
-          />
-        </Grid>
-
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <TextField
-            fullWidth
-            label="Max price"
-            value={maxPrice}
-            onChange={(event) => setMaxPrice(event.target.value)}
-            inputMode="numeric"
-            sx={{ "& .MuiOutlinedInput-root": { bgcolor: "#fff" } }}
-          />
-        </Grid>
-
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
           <TextField
             select
             fullWidth
@@ -174,6 +152,28 @@ export default function GallerySection({ items }: { items: SareeItem[] }) {
             <MenuItem value="price_desc">Price: High to Low</MenuItem>
             <MenuItem value="name_asc">Name: A to Z</MenuItem>
           </TextField>
+        </Grid>
+
+        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
+          <TextField
+            fullWidth
+            label="Min price"
+            value={minPrice}
+            onChange={(event) => setMinPrice(event.target.value)}
+            inputMode="numeric"
+            sx={{ "& .MuiOutlinedInput-root": { bgcolor: "#fff" } }}
+          />
+        </Grid>
+
+        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
+          <TextField
+            fullWidth
+            label="Max price"
+            value={maxPrice}
+            onChange={(event) => setMaxPrice(event.target.value)}
+            inputMode="numeric"
+            sx={{ "& .MuiOutlinedInput-root": { bgcolor: "#fff" } }}
+          />
         </Grid>
 
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>

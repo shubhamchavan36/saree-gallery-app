@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogTitle,
   Grid,
+  IconButton,
   InputAdornment,
   LinearProgress,
   MenuItem,
@@ -32,6 +33,7 @@ import {
   TablePagination,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
@@ -47,7 +49,7 @@ type FormState = {
   status: SareeStatus;
   color: string;
   tileImage: File | null;
-  galleryImages: FileList | null;
+  galleryImages: File[];
   description: string;
 };
 
@@ -63,6 +65,12 @@ type UploadProgressState = {
   activeFileName: string | null;
 };
 
+type GalleryDraftItem = {
+  file: File;
+  previewUrl: string;
+  status: SareeStatus;
+};
+
 const initialForm: FormState = {
   name: "",
   imageText: "",
@@ -70,7 +78,7 @@ const initialForm: FormState = {
   status: "available",
   color: "default",
   tileImage: null,
-  galleryImages: null,
+  galleryImages: [],
   description: "",
 };
 
@@ -105,18 +113,20 @@ export default function AdminPage() {
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
+  const [newGalleryDraft, setNewGalleryDraft] = useState<GalleryDraftItem[]>([]);
+  const [newGalleryDialogOpen, setNewGalleryDialogOpen] = useState(false);
   const [editing, setEditing] = useState<SareeItem | null>(null);
   const [editForm, setEditForm] = useState<FormState>(initialForm);
   const [editExistingTileImage, setEditExistingTileImage] = useState<string | null>(null);
-  const [editExistingGalleryImages, setEditExistingGalleryImages] = useState<string[]>([]);
+  const [editExistingGalleryImages, setEditExistingGalleryImages] = useState<SareeItem["colors"][number]["images"]>([]);
   const [editRemovedGalleryImages, setEditRemovedGalleryImages] = useState<string[]>([]);
+  const [editGalleryManagerOpen, setEditGalleryManagerOpen] = useState(false);
+  const [editNewGalleryDraft, setEditNewGalleryDraft] = useState<GalleryDraftItem[]>([]);
+  const [editNewGalleryDialogOpen, setEditNewGalleryDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tablePage, setTablePage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const formGalleryFileNames = form.galleryImages ? Array.from(form.galleryImages).map((file) => file.name) : [];
-  const editGalleryFileNames = editForm.galleryImages
-    ? Array.from(editForm.galleryImages).map((file) => file.name)
-    : [];
+  const formGalleryFileNames = form.galleryImages.map((file) => file.name);
   const filteredSarees = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return sarees;
@@ -159,7 +169,8 @@ export default function AdminPage() {
   const buildFormData = (
     state: FormState,
     uploadedUrls: UploadedImageUrls,
-    removedGalleryImageUrls: string[] = []
+    removedGalleryImageUrls: string[] = [],
+    galleryImageStatusMap: Record<string, SareeStatus> = {}
   ) => {
     const payload = new FormData();
     payload.append("name", state.name);
@@ -171,6 +182,7 @@ export default function AdminPage() {
     if (uploadedUrls.tileImageUrl) payload.append("tileImageUrl", uploadedUrls.tileImageUrl);
     uploadedUrls.galleryImageUrls.forEach((url) => payload.append("galleryImageUrls", url));
     removedGalleryImageUrls.forEach((url) => payload.append("removedGalleryImageUrls", url));
+    payload.append("galleryImageStatusMap", JSON.stringify(galleryImageStatusMap));
     return payload;
   };
 
@@ -189,7 +201,7 @@ export default function AdminPage() {
   };
 
   const uploadSelectedImages = async (state: FormState): Promise<UploadedImageUrls> => {
-    const galleryFiles = state.galleryImages ? Array.from(state.galleryImages) : [];
+    const galleryFiles = state.galleryImages;
     const uploads = [
       ...(state.tileImage ? [{ kind: "tile" as const, file: state.tileImage }] : []),
       ...galleryFiles.map((file) => ({ kind: "gallery" as const, file })),
@@ -263,9 +275,13 @@ export default function AdminPage() {
     try {
       setNotice("Uploading images...");
       const uploadedUrls = await uploadSelectedImages(form);
+      const galleryStatusMap: Record<string, SareeStatus> = {};
+      uploadedUrls.galleryImageUrls.forEach((url, index) => {
+        galleryStatusMap[url] = newGalleryDraft[index]?.status ?? "available";
+      });
       const response = await fetch("/api/sarees", {
         method: "POST",
-        body: buildFormData(form, uploadedUrls),
+        body: buildFormData(form, uploadedUrls, [], galleryStatusMap),
       });
       const data = await response.json();
 
@@ -276,6 +292,7 @@ export default function AdminPage() {
 
       setNotice("Saree added successfully.");
       setForm(initialForm);
+      replaceNewGalleryDraft([]);
       await refresh();
     } catch {
       setNotice("Failed to upload one or more images.");
@@ -291,9 +308,16 @@ export default function AdminPage() {
     try {
       setNotice("Uploading images...");
       const uploadedUrls = await uploadSelectedImages(editForm);
+      const galleryStatusMap: Record<string, SareeStatus> = {};
+      editExistingGalleryImages.forEach((img) => {
+        galleryStatusMap[img.url] = img.status ?? "available";
+      });
+      uploadedUrls.galleryImageUrls.forEach((url, index) => {
+        galleryStatusMap[url] = editNewGalleryDraft[index]?.status ?? "available";
+      });
       const response = await fetch(`/api/sarees/${editing.id}`, {
         method: "PUT",
-        body: buildFormData(editForm, uploadedUrls, editRemovedGalleryImages),
+        body: buildFormData(editForm, uploadedUrls, editRemovedGalleryImages, galleryStatusMap),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -340,12 +364,15 @@ export default function AdminPage() {
       status: item.status,
       color: item.colors[0]?.color ?? "default",
       tileImage: null,
-      galleryImages: null,
+      galleryImages: [],
       description: item.description ?? "",
     });
     setEditExistingTileImage(item.tileImage ?? null);
     setEditExistingGalleryImages(item.colors.flatMap((entry) => entry.images));
     setEditRemovedGalleryImages([]);
+    replaceEditNewGalleryDraft([]);
+    setEditGalleryManagerOpen(false);
+    setEditNewGalleryDialogOpen(false);
   };
 
   const closeEdit = () => {
@@ -354,12 +381,91 @@ export default function AdminPage() {
     setEditExistingTileImage(null);
     setEditExistingGalleryImages([]);
     setEditRemovedGalleryImages([]);
+    replaceEditNewGalleryDraft([]);
+    setEditGalleryManagerOpen(false);
+    setEditNewGalleryDialogOpen(false);
   };
 
   const removeExistingGalleryImage = (imageUrl: string) => {
-    setEditExistingGalleryImages((prev) => prev.filter((url) => url !== imageUrl));
+    setEditExistingGalleryImages((prev) => prev.filter((img) => img.url !== imageUrl));
     setEditRemovedGalleryImages((prev) =>
       prev.includes(imageUrl) ? prev : [...prev, imageUrl]
+    );
+  };
+
+  const replaceNewGalleryDraft = (next: GalleryDraftItem[]) => {
+    setNewGalleryDraft((prev) => {
+      prev.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return next;
+    });
+  };
+
+  const replaceEditNewGalleryDraft = (next: GalleryDraftItem[]) => {
+    setEditNewGalleryDraft((prev) => {
+      prev.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return next;
+    });
+  };
+
+  const beginNewGallerySelection = (files: File[]) => {
+    setForm((prev) => ({ ...prev, galleryImages: files }));
+    replaceNewGalleryDraft(
+      files.map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        status: form.status,
+      }))
+    );
+    setNewGalleryDialogOpen(files.length > 0);
+  };
+
+  const beginEditNewGallerySelection = (files: File[]) => {
+    if (files.length === 0) return;
+    setEditForm((prev) => ({ ...prev, galleryImages: [...prev.galleryImages, ...files] }));
+    setEditNewGalleryDraft((prev) => [
+      ...prev,
+      ...files.map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        status: editForm.status,
+      })),
+    ]);
+    setEditNewGalleryDialogOpen(true);
+  };
+
+  const updateNewDraftStatus = (index: number, status: SareeStatus) => {
+    setNewGalleryDraft((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, status } : item))
+    );
+  };
+
+  const removeNewDraftAt = (index: number) => {
+    setNewGalleryDraft((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((_, idx) => idx !== index);
+    });
+    setForm((prev) => ({ ...prev, galleryImages: prev.galleryImages.filter((_, idx) => idx !== index) }));
+  };
+
+  const updateEditNewDraftStatus = (index: number, status: SareeStatus) => {
+    setEditNewGalleryDraft((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, status } : item))
+    );
+  };
+
+  const removeEditNewDraftAt = (index: number) => {
+    setEditNewGalleryDraft((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((_, idx) => idx !== index);
+    });
+    setEditForm((prev) => ({ ...prev, galleryImages: prev.galleryImages.filter((_, idx) => idx !== index) }));
+  };
+
+  const updateExistingGalleryImageStatus = (imageUrl: string, status: SareeStatus) => {
+    setEditExistingGalleryImages((prev) =>
+      prev.map((img) => (img.url === imageUrl ? { ...img, status } : img))
     );
   };
 
@@ -514,9 +620,7 @@ export default function AdminPage() {
                   type="file"
                   multiple
                   accept="image/*"
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, galleryImages: event.target.files }))
-                  }
+                  onChange={(event) => beginNewGallerySelection(Array.from(event.target.files ?? []))}
                 />
               </Button>
               <Typography variant="caption" sx={{ mt: 0.75, display: "block", color: "text.secondary" }}>
@@ -783,41 +887,15 @@ export default function AdminPage() {
             </Typography>
             <Button
               variant="outlined"
-              component="label"
+              onClick={() => setEditGalleryManagerOpen(true)}
               sx={{ textAlign: "center", lineHeight: 1.2, whiteSpace: "normal", py: 1.1 }}
             >
-              Upload Additional Gallery Images
-              <input
-                hidden
-                type="file"
-                multiple
-                accept="image/*"
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, galleryImages: event.target.files }))
-                }
-              />
+              Manage Gallery Images
             </Button>
             <Typography variant="caption" sx={{ mt: -1, display: "block", color: "text.secondary" }}>
-              {editGalleryFileNames.length > 0
-                ? editGalleryFileNames.join(", ")
-                : "No additional gallery images selected"}
+              {editExistingGalleryImages.length} existing image(s)
+              {editNewGalleryDraft.length > 0 ? `, ${editNewGalleryDraft.length} pending upload` : ""}
             </Typography>
-            {editExistingGalleryImages.length > 0 ? (
-              <Stack direction="row" spacing={1} sx={{ mt: -1, flexWrap: "wrap", rowGap: 1 }}>
-                {editExistingGalleryImages.map((url) => (
-                  <Chip
-                    key={url}
-                    label={getFileNameFromUrl(url)}
-                    onDelete={() => removeExistingGalleryImage(url)}
-                    size="small"
-                  />
-                ))}
-              </Stack>
-            ) : (
-              <Typography variant="caption" sx={{ mt: -1, display: "block", color: "text.secondary" }}>
-                No existing gallery images.
-              </Typography>
-            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
@@ -827,6 +905,361 @@ export default function AdminPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog
+        open={newGalleryDialogOpen}
+        onClose={() => setNewGalleryDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Selected Gallery Images</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          {newGalleryDraft.length === 0 ? (
+            <Typography sx={{ color: "text.secondary" }}>No gallery images selected.</Typography>
+          ) : (
+            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Image</TableCell>
+                    <TableCell>Saree Name</TableCell>
+                    <TableCell>Availability</TableCell>
+                    <TableCell align="right">Remove</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {newGalleryDraft.map((item, index) => (
+                    <TableRow key={`${item.file.name}-${index}`}>
+                      <TableCell sx={{ width: 88 }}>
+                        <Box
+                          component="img"
+                          src={item.previewUrl}
+                          alt={item.file.name}
+                          sx={{
+                            width: 64,
+                            height: 64,
+                            borderRadius: 1.5,
+                            objectFit: "cover",
+                            border: "1px solid rgba(0,0,0,0.12)",
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography sx={{ fontWeight: 600 }} noWrap title={form.name || ""}>
+                          {form.name || "(Saree name not set yet)"}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: "text.secondary" }} noWrap title={item.file.name}>
+                          {item.file.name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ width: 180 }}>
+                        <TextField
+                          select
+                          size="small"
+                          fullWidth
+                          value={item.status}
+                          onChange={(event) => updateNewDraftStatus(index, event.target.value as SareeStatus)}
+                        >
+                          <MenuItem value="available">Available</MenuItem>
+                          <MenuItem value="sold_out">Sold Out</MenuItem>
+                        </TextField>
+                      </TableCell>
+                      <TableCell align="right" sx={{ width: 120 }}>
+                        <Button
+                          size="small"
+                          color="error"
+                          startIcon={<DeleteRoundedIcon />}
+                          onClick={() => removeNewDraftAt(index)}
+                        >
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+          <Typography variant="caption" sx={{ mt: 1.25, display: "block", color: "text.secondary" }}>
+            These settings will apply when you click Add Saree.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            color="error"
+            onClick={() => {
+              replaceNewGalleryDraft([]);
+              setForm((prev) => ({ ...prev, galleryImages: [] }));
+              setNewGalleryDialogOpen(false);
+            }}
+            disabled={submitting}
+          >
+            Clear
+          </Button>
+          <Button onClick={() => setNewGalleryDialogOpen(false)} variant="contained" disabled={submitting}>
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={editNewGalleryDialogOpen}
+        onClose={() => setEditNewGalleryDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Selected New Gallery Images</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          {editNewGalleryDraft.length === 0 ? (
+            <Typography sx={{ color: "text.secondary" }}>No new gallery images selected.</Typography>
+          ) : (
+            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Image</TableCell>
+                    <TableCell>Saree Name</TableCell>
+                    <TableCell>Availability</TableCell>
+                    <TableCell align="right">Remove</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {editNewGalleryDraft.map((item, index) => (
+                    <TableRow key={`${item.file.name}-${index}`}>
+                      <TableCell sx={{ width: 88 }}>
+                        <Box
+                          component="img"
+                          src={item.previewUrl}
+                          alt={item.file.name}
+                          sx={{
+                            width: 64,
+                            height: 64,
+                            borderRadius: 1.5,
+                            objectFit: "cover",
+                            border: "1px solid rgba(0,0,0,0.12)",
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography sx={{ fontWeight: 600 }} noWrap title={editForm.name || ""}>
+                          {editForm.name || "(Saree name not set)"}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: "text.secondary" }} noWrap title={item.file.name}>
+                          {item.file.name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ width: 180 }}>
+                        <TextField
+                          select
+                          size="small"
+                          fullWidth
+                          value={item.status}
+                          onChange={(event) =>
+                            updateEditNewDraftStatus(index, event.target.value as SareeStatus)
+                          }
+                        >
+                          <MenuItem value="available">Available</MenuItem>
+                          <MenuItem value="sold_out">Sold Out</MenuItem>
+                        </TextField>
+                      </TableCell>
+                      <TableCell align="right" sx={{ width: 120 }}>
+                        <Button
+                          size="small"
+                          color="error"
+                          startIcon={<DeleteRoundedIcon />}
+                          onClick={() => removeEditNewDraftAt(index)}
+                        >
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+          <Typography variant="caption" sx={{ mt: 1.25, display: "block", color: "text.secondary" }}>
+            These images will be uploaded when you click Save in Edit Saree.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            color="error"
+            onClick={() => {
+              replaceEditNewGalleryDraft([]);
+              setEditForm((prev) => ({ ...prev, galleryImages: [] }));
+              setEditNewGalleryDialogOpen(false);
+            }}
+            disabled={submitting}
+          >
+            Clear
+          </Button>
+          <Button onClick={() => setEditNewGalleryDialogOpen(false)} variant="contained" disabled={submitting}>
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={editGalleryManagerOpen}
+        onClose={() => setEditGalleryManagerOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Manage Gallery Images</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Stack spacing={1.5}>
+            <Button
+              variant="outlined"
+              component="label"
+              sx={{ width: "fit-content", textAlign: "center", lineHeight: 1.2, whiteSpace: "normal" }}
+            >
+              Add More Images
+              <input
+                hidden
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={(event) => beginEditNewGallerySelection(Array.from(event.target.files ?? []))}
+              />
+            </Button>
+            <Typography variant="caption" sx={{ color: "text.secondary" }}>
+              Update status, delete images, or add more. Changes are saved when you click Save in Edit Saree.
+            </Typography>
+            <TableContainer
+              component={Paper}
+              variant="outlined"
+              sx={{ borderRadius: 2, overflowX: "hidden" }}
+            >
+              <Table size="small" sx={{ tableLayout: "fixed" }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ width: 88 }}>Image</TableCell>
+                    <TableCell>File</TableCell>
+                    <TableCell sx={{ width: { xs: 140, sm: 180 } }}>Availability</TableCell>
+                    <TableCell align="right" sx={{ width: 64 }}>
+                      Action
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {editExistingGalleryImages.length === 0 && editNewGalleryDraft.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4}>No gallery images.</TableCell>
+                    </TableRow>
+                  ) : (
+                    <>
+                      {editExistingGalleryImages.map((img) => (
+                        <TableRow key={img.url}>
+                          <TableCell sx={{ width: 88 }}>
+                            <Box sx={{ position: "relative", width: 64, height: 64, borderRadius: 1.5, overflow: "hidden" }}>
+                              <Image
+                                src={img.url}
+                                alt={getFileNameFromUrl(img.url)}
+                                fill
+                                sizes="64px"
+                                style={{ objectFit: "cover" }}
+                              />
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Typography
+                              variant="body2"
+                              title={getFileNameFromUrl(img.url)}
+                              sx={{ whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.2 }}
+                            >
+                              {getFileNameFromUrl(img.url)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell sx={{ width: { xs: 140, sm: 180 } }}>
+                            <TextField
+                              select
+                              size="small"
+                              fullWidth
+                              value={img.status ?? "available"}
+                              onChange={(event) =>
+                                updateExistingGalleryImageStatus(img.url, event.target.value as SareeStatus)
+                              }
+                            >
+                              <MenuItem value="available">Available</MenuItem>
+                              <MenuItem value="sold_out">Sold Out</MenuItem>
+                            </TextField>
+                          </TableCell>
+                          <TableCell align="right" sx={{ width: 64 }}>
+                            <Tooltip title="Delete image">
+                              <IconButton color="error" onClick={() => removeExistingGalleryImage(img.url)} size="small">
+                                <DeleteRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+
+                      {editNewGalleryDraft.map((item, index) => (
+                        <TableRow key={`pending-${item.file.name}-${index}`}>
+                          <TableCell sx={{ width: 88 }}>
+                            <Box
+                              component="img"
+                              src={item.previewUrl}
+                              alt={item.file.name}
+                              sx={{
+                                width: 64,
+                                height: 64,
+                                borderRadius: 1.5,
+                                objectFit: "cover",
+                                border: "1px solid rgba(0,0,0,0.12)",
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography
+                              variant="body2"
+                              title={item.file.name}
+                              sx={{ fontWeight: 600, whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.2 }}
+                            >
+                              {item.file.name}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                              Pending upload
+                            </Typography>
+                          </TableCell>
+                          <TableCell sx={{ width: { xs: 140, sm: 180 } }}>
+                            <TextField
+                              select
+                              size="small"
+                              fullWidth
+                              value={item.status}
+                              onChange={(event) =>
+                                updateEditNewDraftStatus(index, event.target.value as SareeStatus)
+                              }
+                            >
+                              <MenuItem value="available">Available</MenuItem>
+                              <MenuItem value="sold_out">Sold Out</MenuItem>
+                            </TextField>
+                          </TableCell>
+                          <TableCell align="right" sx={{ width: 64 }}>
+                            <Tooltip title="Remove from pending">
+                              <IconButton color="error" onClick={() => removeEditNewDraftAt(index)} size="small">
+                                <DeleteRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setEditGalleryManagerOpen(false)} variant="contained">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Backdrop
         open={submitting}
         sx={{

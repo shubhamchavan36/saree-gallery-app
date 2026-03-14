@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { Box, CircularProgress, IconButton, Stack, Tooltip } from "@mui/material";
+import { Box, Chip, CircularProgress, IconButton, Stack, Tooltip } from "@mui/material";
 import ArrowBackIosNewRoundedIcon from "@mui/icons-material/ArrowBackIosNewRounded";
 import ArrowForwardIosRoundedIcon from "@mui/icons-material/ArrowForwardIosRounded";
 import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
@@ -32,9 +32,11 @@ export default function ImageViewer({
   const activeColor = colors[activeColorIndex] ?? colors[0];
   const images = activeColor?.images ?? [];
   const activeImage = images[activeImageIndex] ?? images[0];
+  const activeImageUrl = activeImage?.url;
   const thumbnailItems = colors.flatMap((entry, colorIndex) =>
-    entry.images.map((imageUrl, imageIndex) => ({
-      imageUrl,
+    entry.images.map((image, imageIndex) => ({
+      imageUrl: image.url,
+      status: image.status,
       color: entry.color,
       colorIndex,
       imageIndex,
@@ -121,7 +123,7 @@ export default function ImageViewer({
           bgcolor: "#f6efe8",
         }}
       >
-        {activeImage && (
+        {activeImageUrl && (
           <Box
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
@@ -137,7 +139,7 @@ export default function ImageViewer({
             }}
           >
             <Image
-              src={activeImage}
+              src={activeImageUrl}
               alt="Saree view"
               fill
               sizes="(max-width: 900px) 100vw, 60vw"
@@ -152,6 +154,22 @@ export default function ImageViewer({
               onLoad={() => setImageLoading(false)}
             />
           </Box>
+        )}
+        {activeImage?.status === "sold_out" && (
+          <Chip
+            label="Sold Out"
+            color="error"
+            size="small"
+            sx={{
+              position: "absolute",
+              top: { xs: 10, sm: 14 },
+              left: { xs: 10, sm: 14 },
+              zIndex: 5,
+              fontWeight: 800,
+              letterSpacing: 0.2,
+              boxShadow: "0 10px 18px rgba(0,0,0,0.18)",
+            }}
+          />
         )}
         {imageLoading && (
           <Box
@@ -216,8 +234,8 @@ export default function ImageViewer({
           spacing={0.5}
           sx={{
             position: "absolute",
-            top: { xs: 10, sm: 14 },
-            left: { xs: 10, sm: 14 },
+            right: { xs: 10, sm: 14 },
+            bottom: imageText ? { xs: 56, sm: 72 } : { xs: 10, sm: 14 },
             bgcolor: "rgba(0,0,0,0.5)",
             borderRadius: 999,
             px: 0.4,
@@ -336,6 +354,28 @@ export default function ImageViewer({
                   style={{ objectFit: "cover" }}
                   unoptimized
                 />
+                {thumb.status === "sold_out" && (
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      top: 4,
+                      left: 4,
+                      px: 0.6,
+                      py: 0.2,
+                      borderRadius: 999,
+                      bgcolor: "rgba(211, 47, 47, 0.92)",
+                      color: "#fff",
+                      fontSize: "0.68rem",
+                      fontWeight: 800,
+                      lineHeight: 1.2,
+                      letterSpacing: 0.2,
+                      boxShadow: "0 6px 12px rgba(0,0,0,0.25)",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    Sold
+                  </Box>
+                )}
               </Box>
             </Tooltip>
           );

@@ -1,7 +1,7 @@
 import path from "path";
 import { del, put } from "@vercel/blob";
 import { randomUUID } from "crypto";
-import { SareeItem, SareeStatus } from "@/types/saree";
+import { SareeImage, SareeItem, SareeStatus } from "@/types/saree";
 
 // data access --------------------------------------------------------------
 import { getDb } from "@/lib/mongodb";
@@ -10,16 +10,56 @@ export function normalizeBlobUrl(url: string): string {
   return url.replace(".private.blob.vercel-storage.com", ".public.blob.vercel-storage.com");
 }
 
+export function normalizeStatus(input: string | null | undefined): SareeStatus {
+  return input === "sold_out" ? "sold_out" : "available";
+}
+
+function normalizeSareeImage(input: unknown): SareeImage | null {
+  if (typeof input === "string" && input.trim()) {
+    return { url: normalizeBlobUrl(input.trim()), status: "available" };
+  }
+
+  if (input && typeof input === "object") {
+    const maybe = input as { url?: unknown; status?: unknown };
+    if (typeof maybe.url === "string" && maybe.url.trim()) {
+      return {
+        url: normalizeBlobUrl(maybe.url.trim()),
+        status: normalizeStatus(typeof maybe.status === "string" ? maybe.status : undefined),
+      };
+    }
+  }
+
+  return null;
+}
+
 function normalizeSareeUrls(item: SareeItem): SareeItem {
+  const tileImage = normalizeBlobUrl(item.tileImage);
+  const colors = Array.isArray(item.colors)
+    ? item.colors.map((entry) => {
+        const normalizedImages = Array.isArray(entry.images)
+          ? entry.images
+              .map((img) => normalizeSareeImage(img))
+              .filter((img): img is SareeImage => Boolean(img))
+          : [];
+
+        const seen = new Set<string>();
+        const images = normalizedImages
+          .filter((img) => normalizeBlobUrl(img.url) !== tileImage)
+          .filter((img) => {
+            const key = normalizeBlobUrl(img.url);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+
+        return { ...entry, images };
+      })
+    : [];
+
   return {
     ...item,
-    tileImage: normalizeBlobUrl(item.tileImage),
-    colors: Array.isArray(item.colors)
-      ? item.colors.map((entry) => ({
-          ...entry,
-          images: Array.isArray(entry.images) ? entry.images.map((img) => normalizeBlobUrl(img)) : [],
-        }))
-      : [],
+    tileImage,
+    colors,
   };
 }
 
@@ -51,10 +91,6 @@ export async function writeSarees(sarees: SareeItem[]) {
   if (sarees.length) {
     await coll.insertMany(sarees.map((s) => normalizeSareeUrls(s)));
   }
-}
-
-export function normalizeStatus(input: string | null | undefined): SareeStatus {
-  return input === "sold_out" ? "sold_out" : "available";
 }
 
 export function makeId() {
@@ -90,8 +126,8 @@ export function getSareeBlobUrls(item: SareeItem): string[] {
   if (Array.isArray(item.colors)) {
     item.colors.forEach((entry) => {
       entry.images.forEach((imageUrl) => {
-        if (imageUrl) {
-          urls.add(imageUrl);
+        if (imageUrl?.url) {
+          urls.add(imageUrl.url);
         }
       });
     });

@@ -43,8 +43,12 @@ export default async function SareeDetailPage({ params }: Props) {
         )
       : [];
   const normalizedColors =
-    safeColors.length > 0 ? safeColors : [{ color: "default", images: [saree.tileImage] }];
-  const detailImageUrls = Array.from(new Set(normalizedColors.flatMap((entry) => entry.images)));
+    safeColors.length > 0
+      ? safeColors
+      : [{ color: "default", images: [{ url: saree.tileImage, status: "available" as const }] }];
+  const detailImageUrls = Array.from(
+    new Set(normalizedColors.flatMap((entry) => entry.images.map((img) => img.url)))
+  );
 
   return (
     <Box className="app-shell-bg" sx={{ minHeight: "100vh", pb: 6 }}>

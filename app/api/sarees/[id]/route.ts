@@ -9,6 +9,7 @@ import {
   saveUploadedFile,
   writeSarees,
 } from "@/lib/saree-store";
+import { SareeStatus } from "@/types/saree";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,24 @@ export const dynamic = "force-dynamic";
 type Context = {
   params: Promise<{ id: string }>;
 };
+
+function parseGalleryImageStatusMap(input: FormDataEntryValue | null): Record<string, SareeStatus> {
+  if (typeof input !== "string" || !input.trim()) return {};
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+
+    const out: Record<string, SareeStatus> = {};
+    for (const [rawUrl, rawStatus] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof rawUrl !== "string" || !rawUrl.trim()) continue;
+      const url = normalizeBlobUrl(rawUrl.trim());
+      out[url] = normalizeStatus(typeof rawStatus === "string" ? rawStatus : undefined);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 export async function GET(_: Request, context: Context) {
   try {
@@ -63,6 +82,7 @@ export async function PUT(request: Request, context: Context) {
     const descriptionInput = formData.get("description");
     const color = ((formData.get("color") as string | null) ?? "default").trim() || "default";
     const tileImageUrl = (formData.get("tileImageUrl") as string | null)?.trim();
+    const galleryImageStatusMap = parseGalleryImageStatusMap(formData.get("galleryImageStatusMap"));
     const galleryImageUrls = formData
       .getAll("galleryImageUrls")
       .filter((entry): entry is string => typeof entry === "string")
@@ -125,7 +145,7 @@ export async function PUT(request: Request, context: Context) {
       nextItem.colors = nextItem.colors
         .map((entry) => ({
           ...entry,
-          images: entry.images.filter((imageUrl) => !removedSet.has(normalizeBlobUrl(imageUrl))),
+          images: entry.images.filter((image) => !removedSet.has(normalizeBlobUrl(image.url))),
         }))
         .filter((entry) => entry.images.length > 0);
     }
@@ -138,16 +158,35 @@ export async function PUT(request: Request, context: Context) {
       if (colorIndex >= 0) {
         nextItem.colors[colorIndex].images = [
           ...nextItem.colors[colorIndex].images,
-          ...allGalleryImages,
+          ...allGalleryImages.map((url) => ({
+            url,
+            status: galleryImageStatusMap[normalizeBlobUrl(url)] ?? "available",
+          })),
         ];
       } else {
-        nextItem.colors.push({ color, images: allGalleryImages });
+        nextItem.colors.push({
+          color,
+          images: allGalleryImages.map((url) => ({
+            url,
+            status: galleryImageStatusMap[normalizeBlobUrl(url)] ?? "available",
+          })),
+        });
       }
+    }
+
+    if (Object.keys(galleryImageStatusMap).length > 0) {
+      nextItem.colors = nextItem.colors.map((entry) => ({
+        ...entry,
+        images: entry.images.map((image) => ({
+          ...image,
+          status: galleryImageStatusMap[normalizeBlobUrl(image.url)] ?? image.status ?? "available",
+        })),
+      }));
     }
 
     if (removedGalleryImageUrls.length > 0) {
       if (removedGalleryImageUrls.includes(normalizeBlobUrl(current.tileImage))) {
-        const firstGalleryImage = nextItem.colors.flatMap((entry) => entry.images)[0];
+        const firstGalleryImage = nextItem.colors.flatMap((entry) => entry.images)[0]?.url;
         if (!uploadedTileImage && !firstGalleryImage) {
           return NextResponse.json(
             { message: "Cannot remove the only image. Add another image or set a new tile image." },

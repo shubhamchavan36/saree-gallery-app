@@ -1,8 +1,13 @@
 export type SareeStatus = "available" | "sold_out";
 
+export interface SareeImage {
+  url: string;
+  status: SareeStatus;
+}
+
 export interface SareeColor {
   color: string;
-  images: string[];
+  images: SareeImage[];
 }
 
 export interface SareeItem {

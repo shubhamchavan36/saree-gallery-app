@@ -8,10 +8,28 @@ import {
   saveUploadedFile,
   writeSarees,
 } from "@/lib/saree-store";
-import { SareeItem } from "@/types/saree";
+import { SareeImage, SareeItem, SareeStatus } from "@/types/saree";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function parseGalleryImageStatusMap(input: FormDataEntryValue | null): Record<string, SareeStatus> {
+  if (typeof input !== "string" || !input.trim()) return {};
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+
+    const out: Record<string, SareeStatus> = {};
+    for (const [rawUrl, rawStatus] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof rawUrl !== "string" || !rawUrl.trim()) continue;
+      const url = normalizeBlobUrl(rawUrl.trim());
+      out[url] = normalizeStatus(typeof rawStatus === "string" ? rawStatus : undefined);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 export async function GET() {
   try {
@@ -42,6 +60,7 @@ export async function POST(request: Request) {
     const color = ((formData.get("color") as string | null) ?? "default").trim() || "default";
     const description = (formData.get("description") as string | null)?.trim() ?? "";
     const tileImageUrl = (formData.get("tileImageUrl") as string | null)?.trim();
+    const galleryImageStatusMap = parseGalleryImageStatusMap(formData.get("galleryImageStatusMap"));
     const galleryImageUrls = formData
       .getAll("galleryImageUrls")
       .filter((entry): entry is string => typeof entry === "string")
@@ -74,6 +93,17 @@ export async function POST(request: Request) {
       );
     }
 
+    const normalizedTileImage = normalizeBlobUrl(tileImage);
+    const normalizedGalleryImageUrls = Array.from(
+      new Set(allGalleryImages.map((url) => normalizeBlobUrl(url)))
+    ).filter((url) => url !== normalizedTileImage);
+
+    const galleryImageEntries: SareeImage[] = normalizedGalleryImageUrls.map((url) => ({
+      url,
+      // If status isn't specified per-image, default to the saree-level availability.
+      status: galleryImageStatusMap[url] ?? status,
+    }));
+
     const now = new Date().toISOString();
     const newSaree: SareeItem = {
       id: makeId(),
@@ -87,7 +117,7 @@ export async function POST(request: Request) {
       colors: [
         {
           color,
-          images: allGalleryImages.length > 0 ? allGalleryImages : [tileImage],
+          images: galleryImageEntries,
         },
       ],
       description,

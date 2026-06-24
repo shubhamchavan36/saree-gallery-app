@@ -31,6 +31,19 @@ function parseGalleryImageStatusMap(input: FormDataEntryValue | null): Record<st
   }
 }
 
+function parseNewGalleryStatuses(input: FormDataEntryValue | null): SareeStatus[] {
+  if (typeof input !== "string" || !input.trim()) return [];
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => (typeof item === "string" ? normalizeStatus(item) : "available"))
+      .filter((status): status is SareeStatus => Boolean(status));
+  } catch {
+    return [];
+  }
+}
+
 export async function GET() {
   try {
     const unauthorized = await ensureAdminSession();
@@ -41,7 +54,7 @@ export async function GET() {
   } catch (error) {
     console.error("Error reading sarees:", error);
     return NextResponse.json(
-      { message: "Failed to read sarees. Verify MongoDB env configuration." },
+      { message: "Failed to read sarees. Verify AWS/LocalStack env configuration." },
       { status: 500 }
     );
   }
@@ -61,6 +74,7 @@ export async function POST(request: Request) {
     const description = (formData.get("description") as string | null)?.trim() ?? "";
     const tileImageUrl = (formData.get("tileImageUrl") as string | null)?.trim();
     const galleryImageStatusMap = parseGalleryImageStatusMap(formData.get("galleryImageStatusMap"));
+    const newGalleryStatuses = parseNewGalleryStatuses(formData.get("newGalleryStatuses"));
     const galleryImageUrls = formData
       .getAll("galleryImageUrls")
       .filter((entry): entry is string => typeof entry === "string")
@@ -79,13 +93,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const uploadedTileImage = tileImageUrl ? normalizeBlobUrl(tileImageUrl) : await saveUploadedFile(tileImageFile);
+    const uploadedTileImage = tileImageUrl ? normalizeBlobUrl(tileImageUrl) : await saveUploadedFile(tileImageFile, "tile");
     const uploadedGalleryImages = (
-      await Promise.all(galleryImages.map((file) => saveUploadedFile(file)))
+      await Promise.all(galleryImages.map((file) => saveUploadedFile(file, "gallery")))
     ).filter((value): value is string => Boolean(value));
-    const allGalleryImages = [...galleryImageUrls, ...uploadedGalleryImages];
 
-    const tileImage = uploadedTileImage ?? allGalleryImages[0];
+    const tileImage = uploadedTileImage ?? galleryImageUrls[0] ?? uploadedGalleryImages[0];
     if (!tileImage) {
       return NextResponse.json(
         { message: "Provide at least one tile or gallery image." },
@@ -94,15 +107,23 @@ export async function POST(request: Request) {
     }
 
     const normalizedTileImage = normalizeBlobUrl(tileImage);
-    const normalizedGalleryImageUrls = Array.from(
-      new Set(allGalleryImages.map((url) => normalizeBlobUrl(url)))
+    const normalizedExistingGalleryImageUrls = Array.from(
+      new Set(galleryImageUrls.map((url) => normalizeBlobUrl(url)))
+    ).filter((url) => url !== normalizedTileImage);
+    const normalizedUploadedGalleryImageUrls = Array.from(
+      new Set(uploadedGalleryImages.map((url) => normalizeBlobUrl(url)))
     ).filter((url) => url !== normalizedTileImage);
 
-    const galleryImageEntries: SareeImage[] = normalizedGalleryImageUrls.map((url) => ({
-      url,
-      // If status isn't specified per-image, default to the saree-level availability.
-      status: galleryImageStatusMap[url] ?? status,
-    }));
+    const galleryImageEntries: SareeImage[] = [
+      ...normalizedExistingGalleryImageUrls.map((url) => ({
+        url,
+        status: galleryImageStatusMap[url] ?? status,
+      })),
+      ...normalizedUploadedGalleryImageUrls.map((url, index) => ({
+        url,
+        status: newGalleryStatuses[index] ?? status,
+      })),
+    ];
 
     const now = new Date().toISOString();
     const newSaree: SareeItem = {

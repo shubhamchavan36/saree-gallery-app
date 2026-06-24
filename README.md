@@ -29,31 +29,67 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Environment & Database
+## LocalStack development
 
-This app stores saree data in MongoDB and images in Vercel Blob. Set these variables before running or deploying:
+This app is configured to use LocalStack for development with S3 and DynamoDB.
+
+Create a `.env.local` file with these values:
 
 ```env
-# MongoDB connection
-MONGODB_URI="mongodb+srv://shubham36chavan_db_user:KPjyLqhoGOKoOznI@sareesgallery.h6l2ezp.mongodb.net/saree_gallery?appName=sareesgallery"
-
-# Vercel Blob for image storage (get from Vercel dashboard)
-BLOB_READ_WRITE_TOKEN=your_blob_token_here
-
-# Admin credentials
+AWS_REGION=us-east-1
+AWS_ENDPOINT=http://localhost:4566
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test
+S3_BUCKET_NAME_TILE=saree-gallery-tiles
+S3_BUCKET_NAME_GALLERY=saree-gallery-gallery
+DYNAMODB_TABLE_NAME=sarees
+LOCALSTACK_AUTH_TOKEN=ls-wApO9200-NoZe-keWi-zeqI-cUCOnaSE6254
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
 ADMIN_SESSION_VALUE=saree-gallery-admin-auth
 ```
 
-For Vercel deployment:
-1. Go to your Vercel project dashboard
-2. Navigate to Settings > Environment Variables
-3. Add the above variables (BLOB_READ_WRITE_TOKEN is auto-generated when you enable Blob)
+The `LOCALSTACK_AUTH_TOKEN` is only required by LocalStack startup, not by the app itself.
 
-Replace `<cluster>` with your Atlas cluster address. The defaults above match the project’s built-in credentials.
+### Start LocalStack
 
-## Deploy on Vercel
+Use Docker Compose to launch LocalStack:
+
+```bash
+LOCALSTACK_AUTH_TOKEN=ls-wApO9200-NoZe-keWi-zeqI-cUCOnaSE6254 \
+  docker compose -f docker-compose.localstack.yml up
+```
+
+### Create the required resources
+
+After LocalStack is running, create the buckets and table:
+
+```bash
+aws --endpoint-url=http://localhost:4566 s3 mb s3://saree-gallery-tiles
+aws --endpoint-url=http://localhost:4566 s3 mb s3://saree-gallery-gallery
+
+aws --endpoint-url=http://localhost:4566 dynamodb create-table \
+  --table-name sarees \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5
+```
+
+> Note: the app now writes tile images to `saree-gallery-tiles` and gallery images to `saree-gallery-gallery` by default. If you still want a single bucket, set `S3_BUCKET_NAME` instead of the two separate bucket variables.
+
+### Run the app
+
+```bash
+npm run dev
+```
+
+### Notes
+
+- `AWS_ENDPOINT` points the app to LocalStack.
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` are only for the app’s AWS SDK calls.
+- Use `test/test` for LocalStack credentials or any non-empty values when running on localhost.
+
+## Deploy on AWS
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 

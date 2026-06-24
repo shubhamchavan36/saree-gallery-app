@@ -36,6 +36,19 @@ function parseGalleryImageStatusMap(input: FormDataEntryValue | null): Record<st
   }
 }
 
+function parseNewGalleryStatuses(input: FormDataEntryValue | null): SareeStatus[] {
+  if (typeof input !== "string" || !input.trim()) return [];
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => (typeof item === "string" ? normalizeStatus(item) : "available"))
+      .filter((status): status is SareeStatus => Boolean(status));
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(_: Request, context: Context) {
   try {
     const unauthorized = await ensureAdminSession();
@@ -53,7 +66,7 @@ export async function GET(_: Request, context: Context) {
   } catch (error) {
     console.error("Error reading saree by id:", error);
     return NextResponse.json(
-      { message: "Failed to read saree. Verify MongoDB env configuration." },
+      { message: "Failed to read saree. Verify AWS/LocalStack env configuration." },
       { status: 500 }
     );
   }
@@ -83,6 +96,7 @@ export async function PUT(request: Request, context: Context) {
     const color = ((formData.get("color") as string | null) ?? "default").trim() || "default";
     const tileImageUrl = (formData.get("tileImageUrl") as string | null)?.trim();
     const galleryImageStatusMap = parseGalleryImageStatusMap(formData.get("galleryImageStatusMap"));
+    const newGalleryStatuses = parseNewGalleryStatuses(formData.get("newGalleryStatuses"));
     const galleryImageUrls = formData
       .getAll("galleryImageUrls")
       .filter((entry): entry is string => typeof entry === "string")
@@ -105,11 +119,10 @@ export async function PUT(request: Request, context: Context) {
       .getAll("galleryImages")
       .filter((entry): entry is File => entry instanceof File);
 
-    const uploadedTileImage = tileImageUrl ? normalizeBlobUrl(tileImageUrl) : await saveUploadedFile(tileImageFile);
+    const uploadedTileImage = tileImageUrl ? normalizeBlobUrl(tileImageUrl) : await saveUploadedFile(tileImageFile, "tile");
     const uploadedGalleryImages = (
-      await Promise.all(galleryImages.map((file) => saveUploadedFile(file)))
+      await Promise.all(galleryImages.map((file) => saveUploadedFile(file, "gallery")))
     ).filter((value): value is string => Boolean(value));
-    const allGalleryImages = [...galleryImageUrls, ...uploadedGalleryImages];
 
     const nextItem = { ...current };
 
@@ -150,26 +163,28 @@ export async function PUT(request: Request, context: Context) {
         .filter((entry) => entry.images.length > 0);
     }
 
-    if (allGalleryImages.length > 0) {
+    if (galleryImageUrls.length > 0 || uploadedGalleryImages.length > 0) {
       const colorIndex = nextItem.colors.findIndex(
         (entry) => entry.color.toLowerCase() === color.toLowerCase()
       );
 
+      const images = [
+        ...galleryImageUrls.map((url) => ({
+          url,
+          status: galleryImageStatusMap[normalizeBlobUrl(url)] ?? "available",
+        })),
+        ...uploadedGalleryImages.map((url, index) => ({
+          url,
+          status: newGalleryStatuses[index] ?? "available",
+        })),
+      ];
+
       if (colorIndex >= 0) {
-        nextItem.colors[colorIndex].images = [
-          ...nextItem.colors[colorIndex].images,
-          ...allGalleryImages.map((url) => ({
-            url,
-            status: galleryImageStatusMap[normalizeBlobUrl(url)] ?? "available",
-          })),
-        ];
+        nextItem.colors[colorIndex].images = [...nextItem.colors[colorIndex].images, ...images];
       } else {
         nextItem.colors.push({
           color,
-          images: allGalleryImages.map((url) => ({
-            url,
-            status: galleryImageStatusMap[normalizeBlobUrl(url)] ?? "available",
-          })),
+          images,
         });
       }
     }
@@ -184,20 +199,24 @@ export async function PUT(request: Request, context: Context) {
       }));
     }
 
-    if (removedGalleryImageUrls.length > 0) {
-      if (removedGalleryImageUrls.includes(normalizeBlobUrl(current.tileImage))) {
-        const firstGalleryImage = nextItem.colors.flatMap((entry) => entry.images)[0]?.url;
-        if (!uploadedTileImage && !firstGalleryImage) {
-          return NextResponse.json(
-            { message: "Cannot remove the only image. Add another image or set a new tile image." },
-            { status: 400 }
-          );
-        }
-        if (!uploadedTileImage && firstGalleryImage) {
-          nextItem.tileImage = firstGalleryImage;
-        }
+    if (removedGalleryImageUrls.includes(normalizeBlobUrl(current.tileImage))) {
+      const firstGalleryImage = nextItem.colors.flatMap((entry) => entry.images)[0]?.url;
+      if (!uploadedTileImage && !firstGalleryImage) {
+        return NextResponse.json(
+          { message: "Cannot remove the only image. Add another image or set a new tile image." },
+          { status: 400 }
+        );
       }
+      if (!uploadedTileImage && firstGalleryImage) {
+        nextItem.tileImage = firstGalleryImage;
+      }
+    }
 
+    const currentUrls = new Set(getSareeBlobUrls(current).map((url) => normalizeBlobUrl(url)));
+    const nextUrls = new Set(getSareeBlobUrls(nextItem).map((url) => normalizeBlobUrl(url)));
+    const staleUrls = Array.from(currentUrls).filter((url) => !nextUrls.has(url));
+
+    if (staleUrls.length > 0) {
       const blobReferences = new Set<string>();
       sarees.forEach((item, sareeIndex) => {
         if (sareeIndex === index) return;
@@ -205,7 +224,7 @@ export async function PUT(request: Request, context: Context) {
       });
       getSareeBlobUrls(nextItem).forEach((url) => blobReferences.add(normalizeBlobUrl(url)));
 
-      const blobUrlsToDelete = removedGalleryImageUrls.filter((url) => !blobReferences.has(url));
+      const blobUrlsToDelete = staleUrls.filter((url) => !blobReferences.has(url));
       if (blobUrlsToDelete.length > 0) {
         await deleteBlobUrls(blobUrlsToDelete);
       }

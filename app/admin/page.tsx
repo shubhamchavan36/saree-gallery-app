@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { upload } from "@vercel/blob/client";
 import {
   Alert,
   Backdrop,
@@ -21,7 +20,6 @@ import {
   Grid,
   IconButton,
   InputAdornment,
-  LinearProgress,
   MenuItem,
   Paper,
   Stack,
@@ -51,18 +49,6 @@ type FormState = {
   tileImage: File | null;
   galleryImages: File[];
   description: string;
-};
-
-type UploadedImageUrls = {
-  tileImageUrl: string | null;
-  galleryImageUrls: string[];
-};
-
-type UploadProgressState = {
-  totalFiles: number;
-  completedFiles: number;
-  percentage: number;
-  activeFileName: string | null;
 };
 
 type GalleryDraftItem = {
@@ -111,7 +97,6 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
   const [newGalleryDraft, setNewGalleryDraft] = useState<GalleryDraftItem[]>([]);
   const [newGalleryDialogOpen, setNewGalleryDialogOpen] = useState(false);
@@ -124,8 +109,12 @@ export default function AdminPage() {
   const [editNewGalleryDraft, setEditNewGalleryDraft] = useState<GalleryDraftItem[]>([]);
   const [editNewGalleryDialogOpen, setEditNewGalleryDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [hoveredImageUrl, setHoveredImageUrl] = useState<string | null>(null);
   const [tablePage, setTablePage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isHoveringRef = useRef(false);
+
   const formGalleryFileNames = form.galleryImages.map((file) => file.name);
   const filteredSarees = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -161,16 +150,19 @@ export default function AdminPage() {
   }, []);
 
   const refresh = async () => {
-    const response = await fetch("/api/sarees", { cache: "no-store" });
+    const response = await fetch("/api/sarees", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
     const data = (await response.json()) as SareeItem[];
     setSarees(data);
   };
 
   const buildFormData = (
     state: FormState,
-    uploadedUrls: UploadedImageUrls,
     removedGalleryImageUrls: string[] = [],
-    galleryImageStatusMap: Record<string, SareeStatus> = {}
+    galleryImageStatusMap: Record<string, SareeStatus> = {},
+    newGalleryStatuses: SareeStatus[] = []
   ) => {
     const payload = new FormData();
     payload.append("name", state.name);
@@ -179,109 +171,32 @@ export default function AdminPage() {
     payload.append("status", state.status);
     payload.append("color", state.color);
     payload.append("description", state.description);
-    if (uploadedUrls.tileImageUrl) payload.append("tileImageUrl", uploadedUrls.tileImageUrl);
-    uploadedUrls.galleryImageUrls.forEach((url) => payload.append("galleryImageUrls", url));
+
+    if (state.tileImage) {
+      payload.append("tileImage", state.tileImage);
+    }
+
+    state.galleryImages.forEach((file) => {
+      payload.append("galleryImages", file);
+    });
+
     removedGalleryImageUrls.forEach((url) => payload.append("removedGalleryImageUrls", url));
     payload.append("galleryImageStatusMap", JSON.stringify(galleryImageStatusMap));
+    payload.append("newGalleryStatuses", JSON.stringify(newGalleryStatuses));
     return payload;
-  };
-
-  const uploadToBlob = async (
-    file: File,
-    onProgress?: (loaded: number) => void
-  ) => {
-    const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
-    const blob = await upload(filename, file, {
-      access: "public",
-      handleUploadUrl: "/api/blob/upload",
-      multipart: file.size > 5 * 1024 * 1024,
-      onUploadProgress: (event) => onProgress?.(event.loaded),
-    });
-    return blob.url;
-  };
-
-  const uploadSelectedImages = async (state: FormState): Promise<UploadedImageUrls> => {
-    const galleryFiles = state.galleryImages;
-    const uploads = [
-      ...(state.tileImage ? [{ kind: "tile" as const, file: state.tileImage }] : []),
-      ...galleryFiles.map((file) => ({ kind: "gallery" as const, file })),
-    ];
-
-    if (uploads.length === 0) {
-      setUploadProgress(null);
-      return { tileImageUrl: null, galleryImageUrls: [] };
-    }
-
-    const totalBytes = uploads.reduce((sum, entry) => sum + entry.file.size, 0);
-    const loadedBytesByIndex = uploads.map(() => 0);
-    const galleryImageUrls: string[] = [];
-    let tileImageUrl: string | null = null;
-
-    setUploadProgress({
-      totalFiles: uploads.length,
-      completedFiles: 0,
-      percentage: 0,
-      activeFileName: uploads[0].file.name,
-    });
-
-    for (let index = 0; index < uploads.length; index += 1) {
-      const entry = uploads[index];
-
-      const url = await uploadToBlob(entry.file, (loaded) => {
-        loadedBytesByIndex[index] = loaded;
-        const totalLoaded = loadedBytesByIndex.reduce((sum, value) => sum + value, 0);
-        const percentage = totalBytes > 0 ? Math.round((totalLoaded / totalBytes) * 100) : 0;
-        setUploadProgress((prev) =>
-          prev
-            ? {
-                ...prev,
-                percentage,
-                activeFileName: entry.file.name,
-              }
-            : prev
-        );
-      });
-
-      loadedBytesByIndex[index] = entry.file.size;
-      setUploadProgress((prev) =>
-        prev
-          ? {
-              ...prev,
-              completedFiles: index + 1,
-              percentage:
-                totalBytes > 0
-                  ? Math.round(
-                      (loadedBytesByIndex.reduce((sum, value) => sum + value, 0) / totalBytes) * 100
-                    )
-                  : 100,
-              activeFileName: index + 1 < uploads.length ? uploads[index + 1].file.name : null,
-            }
-          : prev
-      );
-
-      if (entry.kind === "tile") {
-        tileImageUrl = url;
-      } else {
-        galleryImageUrls.push(url);
-      }
-    }
-
-    return { tileImageUrl, galleryImageUrls };
   };
 
   const submitNew = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
     try {
-      setNotice("Uploading images...");
-      const uploadedUrls = await uploadSelectedImages(form);
+      setNotice("Saving saree...");
       const galleryStatusMap: Record<string, SareeStatus> = {};
-      uploadedUrls.galleryImageUrls.forEach((url, index) => {
-        galleryStatusMap[url] = newGalleryDraft[index]?.status ?? "available";
-      });
+      const newGalleryStatuses = newGalleryDraft.map((item) => item.status ?? "available");
       const response = await fetch("/api/sarees", {
         method: "POST",
-        body: buildFormData(form, uploadedUrls, [], galleryStatusMap),
+        credentials: "same-origin",
+        body: buildFormData(form, [], galleryStatusMap, newGalleryStatuses),
       });
       const data = await response.json();
 
@@ -295,9 +210,8 @@ export default function AdminPage() {
       replaceNewGalleryDraft([]);
       await refresh();
     } catch {
-      setNotice("Failed to upload one or more images.");
+      setNotice("Failed to save saree.");
     } finally {
-      setUploadProgress(null);
       setSubmitting(false);
     }
   };
@@ -306,18 +220,16 @@ export default function AdminPage() {
     if (!editing) return;
     setSubmitting(true);
     try {
-      setNotice("Uploading images...");
-      const uploadedUrls = await uploadSelectedImages(editForm);
+      setNotice("Saving changes...");
       const galleryStatusMap: Record<string, SareeStatus> = {};
       editExistingGalleryImages.forEach((img) => {
         galleryStatusMap[img.url] = img.status ?? "available";
       });
-      uploadedUrls.galleryImageUrls.forEach((url, index) => {
-        galleryStatusMap[url] = editNewGalleryDraft[index]?.status ?? "available";
-      });
+      const newGalleryStatuses = editNewGalleryDraft.map((item) => item.status ?? "available");
       const response = await fetch(`/api/sarees/${editing.id}`, {
         method: "PUT",
-        body: buildFormData(editForm, uploadedUrls, editRemovedGalleryImages, galleryStatusMap),
+        credentials: "same-origin",
+        body: buildFormData(editForm, editRemovedGalleryImages, galleryStatusMap, newGalleryStatuses),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -329,9 +241,8 @@ export default function AdminPage() {
       closeEdit();
       await refresh();
     } catch {
-      setNotice("Failed to upload one or more images.");
+      setNotice("Failed to save changes.");
     } finally {
-      setUploadProgress(null);
       setSubmitting(false);
     }
   };
@@ -339,7 +250,10 @@ export default function AdminPage() {
   const deleteSaree = async (id: string) => {
     const proceed = window.confirm("Delete this saree?");
     if (!proceed) return;
-    const response = await fetch(`/api/sarees/${id}`, { method: "DELETE" });
+    const response = await fetch(`/api/sarees/${id}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+    });
     if (!response.ok) {
       const data = (await response.json().catch(() => ({}))) as { message?: string };
       setNotice(data.message ?? "Failed to delete saree.");
@@ -350,7 +264,10 @@ export default function AdminPage() {
   };
 
   const logout = async () => {
-    await fetch("/api/admin/logout", { method: "POST" });
+    await fetch("/api/admin/logout", {
+      method: "POST",
+      credentials: "same-origin",
+    });
     router.replace("/login");
     router.refresh();
   };
@@ -487,7 +404,7 @@ export default function AdminPage() {
           </Button>
         </Stack>
         <Typography sx={{ mt: 1, color: "text.secondary" }}>
-          Manage saree catalog using local JSON and local image uploads.
+          Manage saree catalog using LocalStack S3 and DynamoDB storage.
         </Typography>
 
         {notice && (
@@ -687,6 +604,17 @@ export default function AdminPage() {
                         sx={{ position: "relative", width: 70, height: 70, borderRadius: 2, overflow: "hidden", cursor: "pointer" }}
                         onClick={() => router.push(`/saree/${item.id}`)}
                         title="Open details"
+                        onMouseEnter={() => {
+                          isHoveringRef.current = true;
+                          if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                          setHoveredImageUrl(item.tileImage);
+                        }}
+                        onMouseLeave={() => {
+                          isHoveringRef.current = false;
+                          hoverTimeoutRef.current = setTimeout(() => {
+                            if (!isHoveringRef.current) setHoveredImageUrl(null);
+                          }, 150);
+                        }}
                       >
                         <Image src={item.tileImage} alt={item.name} fill style={{ objectFit: "cover" }} />
                       </Box>
@@ -941,6 +869,18 @@ export default function AdminPage() {
                             borderRadius: 1.5,
                             objectFit: "cover",
                             border: "1px solid rgba(0,0,0,0.12)",
+                            cursor: "pointer",
+                          }}
+                          onMouseEnter={() => {
+                            isHoveringRef.current = true;
+                            if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                            setHoveredImageUrl(item.previewUrl);
+                          }}
+                          onMouseLeave={() => {
+                            isHoveringRef.current = false;
+                            hoverTimeoutRef.current = setTimeout(() => {
+                              if (!isHoveringRef.current) setHoveredImageUrl(null);
+                            }, 150);
                           }}
                         />
                       </TableCell>
@@ -1037,6 +977,18 @@ export default function AdminPage() {
                             borderRadius: 1.5,
                             objectFit: "cover",
                             border: "1px solid rgba(0,0,0,0.12)",
+                            cursor: "pointer",
+                          }}
+                          onMouseEnter={() => {
+                            isHoveringRef.current = true;
+                            if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                            setHoveredImageUrl(item.previewUrl);
+                          }}
+                          onMouseLeave={() => {
+                            isHoveringRef.current = false;
+                            hoverTimeoutRef.current = setTimeout(() => {
+                              if (!isHoveringRef.current) setHoveredImageUrl(null);
+                            }, 150);
                           }}
                         />
                       </TableCell>
@@ -1152,7 +1104,27 @@ export default function AdminPage() {
                       {editExistingGalleryImages.map((img) => (
                         <TableRow key={img.url}>
                           <TableCell sx={{ width: 88 }}>
-                            <Box sx={{ position: "relative", width: 64, height: 64, borderRadius: 1.5, overflow: "hidden" }}>
+                            <Box
+                              sx={{
+                                position: "relative",
+                                width: 64,
+                                height: 64,
+                                borderRadius: 1.5,
+                                overflow: "hidden",
+                                cursor: "pointer",
+                              }}
+                              onMouseEnter={() => {
+                                isHoveringRef.current = true;
+                                if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                                setHoveredImageUrl(img.url);
+                              }}
+                              onMouseLeave={() => {
+                                isHoveringRef.current = false;
+                                hoverTimeoutRef.current = setTimeout(() => {
+                                  if (!isHoveringRef.current) setHoveredImageUrl(null);
+                                }, 150);
+                              }}
+                            >
                               <Image
                                 src={img.url}
                                 alt={getFileNameFromUrl(img.url)}
@@ -1208,6 +1180,18 @@ export default function AdminPage() {
                                 borderRadius: 1.5,
                                 objectFit: "cover",
                                 border: "1px solid rgba(0,0,0,0.12)",
+                                cursor: "pointer",
+                              }}
+                              onMouseEnter={() => {
+                                isHoveringRef.current = true;
+                                if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                                setHoveredImageUrl(item.previewUrl);
+                              }}
+                              onMouseLeave={() => {
+                                isHoveringRef.current = false;
+                                hoverTimeoutRef.current = setTimeout(() => {
+                                  if (!isHoveringRef.current) setHoveredImageUrl(null);
+                                }, 150);
                               }}
                             />
                           </TableCell>
@@ -1287,22 +1271,90 @@ export default function AdminPage() {
           <Stack direction="row" spacing={1.25} alignItems="center">
             <CircularProgress size={20} />
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              Uploading files, please wait...
+              Saving changes, please wait...
             </Typography>
           </Stack>
-          <LinearProgress
-            variant="determinate"
-            value={uploadProgress?.percentage ?? 0}
-            sx={{ height: 8, borderRadius: 999 }}
-          />
-          <Typography variant="caption" sx={{ color: "text.secondary" }}>
-            {uploadProgress
-              ? `${uploadProgress.completedFiles}/${uploadProgress.totalFiles} files uploaded (${uploadProgress.percentage}%)`
-              : "Preparing upload..."}
-            {uploadProgress?.activeFileName ? ` - ${uploadProgress.activeFileName}` : ""}
-          </Typography>
         </Stack>
       </Backdrop>
+
+      {/* Hover Image Preview Backdrop + Modal */}
+      {hoveredImageUrl && (
+        <>
+          <Backdrop
+            open={true}
+            onClick={() => {
+              isHoveringRef.current = false;
+              setHoveredImageUrl(null);
+            }}
+            onMouseEnter={() => {
+              isHoveringRef.current = true;
+              if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+            }}
+            onMouseLeave={() => {
+              isHoveringRef.current = false;
+              hoverTimeoutRef.current = setTimeout(() => {
+                if (!isHoveringRef.current) {
+                  setHoveredImageUrl(null);
+                }
+              }, 220);
+            }}
+            sx={{
+              zIndex: 9998,
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backdropFilter: "blur(4px)",
+            }}
+          />
+          <Box
+            sx={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 2,
+              padding: 2,
+              maxWidth: "90vw",
+              maxHeight: "90vh",
+              cursor: "pointer",
+            }}
+            onMouseEnter={() => {
+              isHoveringRef.current = true;
+              if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+            }}
+            onMouseLeave={() => {
+              isHoveringRef.current = false;
+              hoverTimeoutRef.current = setTimeout(() => {
+                if (!isHoveringRef.current) {
+                  setHoveredImageUrl(null);
+                }
+              }, 220);
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              isHoveringRef.current = false;
+              setHoveredImageUrl(null);
+            }}
+          >
+            <Image
+              src={hoveredImageUrl}
+              alt="Preview"
+              width={700}
+              height={700}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "100%",
+                objectFit: "contain",
+                borderRadius: "8px",
+                boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3)",
+              }}
+              priority
+            />
+          </Box>
+        </>
+      )}
     </Box>
   );
 }
